@@ -1,19 +1,25 @@
 package com.hermex.android.skills
 
+import com.hermex.android.ui.components.EvaModeParticles
+import com.hermex.android.ui.components.EvaHeaderTitle
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
@@ -41,7 +47,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hermex.android.navigation.LocalHermexDrawerOpener
+import com.hermex.android.ui.components.HermexBentoCard
 import com.hermex.android.ui.theme.HermexErrorBanner
+import com.hermex.android.eva.DualityMode
+import com.hermex.android.eva.EvaConfig
+import com.hermex.android.ui.components.EvaPetalCanvas
+import com.hermex.android.ui.components.evaGlitch
+import com.hermex.android.ui.theme.evaBreathe
+import com.hermex.android.ui.theme.evaSpringPress
 import com.hermex.android.ui.theme.HermexReadableContent
 import com.hermex.android.ui.theme.HermexRadii
 
@@ -58,24 +71,28 @@ fun SkillsScreen(
     isPaneMode: Boolean = false,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val dualityMode by EvaConfig.dualityMode.collectAsStateWithLifecycle()
     val openDrawer = LocalHermexDrawerOpener.current
 
     Scaffold(
         modifier = modifier,
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {
                     if (!isPaneMode) {
-                        Text(
-                            "Skills",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleLarge,
-                        )
+                        EvaHeaderTitle("скиллы", "чему я научена")
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = { openDrawer() }) {
-                        Icon(Icons.Filled.Menu, contentDescription = "Open menu")
+                    if (isPaneMode) {
+                        IconButton(onClick = { openDrawer() }) {
+                            Icon(Icons.Filled.Menu, contentDescription = "Open menu")
+                        }
+                    } else {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
                     }
                 },
                 actions = {
@@ -84,16 +101,23 @@ fun SkillsScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
+                    containerColor = Color.Transparent,
                     titleContentColor = MaterialTheme.colorScheme.onSurface,
                 ),
             )
         },
     ) { innerPadding ->
-        HermexReadableContent(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
+                .background(Color.Transparent)
+                .then(if (dualityMode == DualityMode.YANDERE) Modifier.evaGlitch(triggerKey = Unit) else Modifier)
+        ) {
+            
+            HermexReadableContent(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
         ) {
             when {
                 uiState.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -156,33 +180,54 @@ fun SkillsScreen(
                                 skillsInCategory.sortedBy { it.name },
                                 key = { it.name ?: it.hashCode() },
                             ) { skill ->
-                                Surface(
+                                HermexBentoCard(
                                     modifier = Modifier.padding(vertical = 4.dp),
-                                    shape = RoundedCornerShape(HermexRadii.Cell),
-                                    color = MaterialTheme.colorScheme.surfaceContainer,
+                                    cornerRadius = 18.dp,
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.65f),
+                                    borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.20f),
+                                    onClick = if (skill.name != null) { { onOpenSkill(skill.name) } } else null,
                                 ) {
-                                    ListItem(
-                                        modifier = Modifier.clickable(enabled = skill.name != null) {
-                                            skill.name?.let(onOpenSkill)
-                                        },
-                                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
-                                        headlineContent = {
-                                            Text(skill.name ?: "Unnamed skill", fontWeight = FontWeight.SemiBold)
-                                        },
-                                        supportingContent = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("⚡", style = MaterialTheme.typography.titleMedium)
+                                        Spacer(Modifier.width(10.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = skill.name ?: "Unnamed skill",
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.titleSmall
+                                            )
                                             val description = skill.description
                                             if (!description.isNullOrBlank()) {
-                                                Text(description, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                                Spacer(Modifier.height(2.dp))
+                                                Text(
+                                                    text = description,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    maxLines = 2,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
                                             }
-                                        },
-                                    )
+                                        }
+                                        skill.category?.takeIf { it.isNotBlank() }?.let { cat ->
+                                            Spacer(Modifier.width(6.dp))
+                                            com.hermex.android.ui.components.ExpressivePill(
+                                                text = cat,
+                                                accentColor = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
                                 }
                             }
+
                         }
                     }
                 }
             }
 
+        }
             uiState.errorMessage?.let { message ->
                 Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.BottomCenter) {
                     HermexErrorBanner(message = message, onRetry = { viewModel.load() })

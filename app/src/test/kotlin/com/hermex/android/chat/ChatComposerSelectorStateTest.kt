@@ -1,25 +1,10 @@
 package com.hermex.android.chat
 
 import com.hermex.android.core.network.dto.ModelCatalogGroup
-import com.hermex.android.core.network.dto.ProfileSummary
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ChatComposerSelectorStateTest {
-    @Test
-    fun `ChatComposerProfileSelectorState-from maps profile fields verbatim`() {
-        val profiles = listOf(ProfileSummary(name = "default"), ProfileSummary(name = "dev-butler"))
-        val uiState = ChatUiState(
-            profileOptions = profiles,
-            selectedProfileName = "dev-butler",
-        )
-
-        val selectorState = ChatComposerProfileSelectorState.from(uiState)
-
-        assertEquals(profiles, selectorState.profileOptions)
-        assertEquals("dev-butler", selectorState.selectedProfileName)
-    }
-
     @Test
     fun `ChatComposerModelSelectorState-from maps model fields verbatim`() {
         val groups = listOf(ModelCatalogGroup(id = "openai-codex", name = "openai-codex", providerId = "openai-codex", models = emptyList()))

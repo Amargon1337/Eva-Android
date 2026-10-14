@@ -37,6 +37,11 @@ data class ChatUiState(
     val currentWorkspace: String? = null,
     val currentModel: String? = null,
     val currentModelProvider: String? = null,
+    /** This session's display title, loaded with [currentModel] from the same `SessionDetail`.
+     * *null* until the first load completes -- the top bar falls back to "Ева" for brand-new
+     * chats where the server hasn't generated a title yet. Updated live after a rename and
+     * after each completed turn (server auto-titles untitled sessions after the first reply). */
+    val sessionTitle: String? = null,
     /** This session's project assignment, loaded the same place [currentWorkspace] is (the
      * `SessionDetail` returned by [ChatViewModel.loadSession]) and updated locally by
      * [ChatViewModel.moveSessionToProject] on success. Null means "no project", same as

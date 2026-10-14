@@ -1,12 +1,15 @@
 package com.hermex.android.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -23,18 +26,29 @@ object HermexColors {
     val WarningLight = Color(0xFFFF9500)
     val ErrorDark = Color(0xFFFF453A)
     val ErrorLight = Color(0xFFFF3B30)
-    val DarkBackground = Color(0xFF000000)
-    val DarkSecondaryBackground = Color(0xFF1C1C1E)
-    val DarkSurfaceLow = Color(0xFF141416)
-    val DarkSurfaceHigh = Color(0xFF242426)
-    val DarkSurfaceHighest = Color(0xFF2C2C2E)
+    val DarkBackground = Color(0xFF07040D)
+    val DarkSecondaryBackground = Color(0xFF12081E)
+    val DarkSurfaceLow = Color(0xFF0D0616)
+    val DarkSurfaceHigh = Color(0xFF1A0D2A)
+    val DarkSurfaceHighest = Color(0xFF24123B)
     val DarkLabel = Color(0xFFFFFFFF)
     val DarkSecondaryLabel = Color(0xFF98989F)
     val DarkTertiaryLabel = Color(0xFF636366)
     val LightTertiaryLabel = Color(0xFFC4C4C6)
-    val DarkSeparator = Color(0xFF38383A)
-    val UserBubbleDark = Color(0xFF48484A)
-    val CodeBackgroundDark = Color(0xFF0A0D12)
+    val DarkSeparator = Color(0xFF321A4E)
+    val UserBubbleDark = Color(0xFF2A1442)
+    val CodeBackgroundDark = Color(0xFF0A0512)
+
+    // Eva Cyber-Anime Palette
+    val EvaPurple = Color(0xFFC084FC)
+    val EvaPurpleDark = Color(0xFFA855F7)
+    val EvaObsidian = Color(0xFF07040D)
+    val SakuraPink = Color(0xFFF472B6)
+    val SakuraBlush = Color(0xFFFB7185)
+    val YandereCrimson = Color(0xFFEF4444)
+    val YandereBlood = Color(0xFF991B1B)
+    val NeonCyan = Color(0xFF38BDF8)
+    val NeonEmerald = Color(0xFF10B981)
 }
 
 /** Mirrors the design system's `tokens/typography.css` scale (itself mirrored from the iOS app's
@@ -53,29 +67,31 @@ private val HermexTypography = Typography(
     bodySmall = TextStyle(fontWeight = FontWeight.Normal, fontSize = 13.sp, lineHeight = 18.sp),
     labelLarge = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 15.sp, lineHeight = 20.sp),
     labelMedium = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 12.sp, lineHeight = 16.sp),
-    labelSmall = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 11.sp, lineHeight = 13.sp),
+    labelSmall = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 11.sp, lineHeight = 16.sp),
 )
 
 object HermexRadii {
+    /** @deprecated Use [EvaDesignTokens.Shapes.Bubble] (22dp) -- unified radius system. */
+    val Bubble = EvaDesignTokens.Shapes.Bubble
     val Accessory = 10.dp
     val Tool = 9.dp
-    val Cell = 12.dp
+    val Cell = EvaDesignTokens.Shapes.Cell
     val SettingsCard = 18.dp
-    val Dialog = 20.dp
-    val Bubble = 20.dp
+    val Dialog = EvaDesignTokens.Shapes.Dialog
     val Composer = 22.dp
     val Code = 24.dp
 }
 
 /** Common spacing scale for new/restyled layouts. Existing screens keep their inline dp values
  * until they're touched by a restyle pass; this isn't meant to force a retrofit. */
+@Deprecated("Use EvaDesignTokens.Spacing instead -- legacy bridge kept until call sites migrate.")
 object HermexSpacing {
-    val XS = 4.dp
-    val SM = 8.dp
-    val MD = 12.dp
-    val LG = 16.dp
-    val XL = 24.dp
-    val XXL = 32.dp
+    val XS = EvaDesignTokens.Spacing.xs
+    val SM = EvaDesignTokens.Spacing.sm
+    val MD = EvaDesignTokens.Spacing.md
+    val LG = EvaDesignTokens.Spacing.lg
+    val XL = EvaDesignTokens.Spacing.xl
+    val XXL = EvaDesignTokens.Spacing.xxl
 }
 
 // Kept for the legacy Settings header-color option. It is not the primary action/accent color.
@@ -103,68 +119,122 @@ fun HeaderLogoColor.toComposeColor(): Color = when (this) {
     HeaderLogoColor.MONO -> HeaderLogoMono
 }
 
-private val DarkColors = darkColorScheme(
-    // Primary/accent actions use the brand gold, black content for contrast.
-    primary = HermexColors.HermesGold,
-    onPrimary = Color.Black,
-    primaryContainer = HermexColors.UserBubbleDark,
-    onPrimaryContainer = HermexColors.DarkLabel,
-    secondary = HermexColors.AccentBlueDark,
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFF0A2E52),
-    onSecondaryContainer = Color(0xFFB8D8FF),
-    background = HermexColors.DarkBackground,
-    onBackground = HermexColors.DarkLabel,
-    surface = HermexColors.DarkSecondaryBackground,
-    onSurface = HermexColors.DarkLabel,
-    surfaceVariant = HermexColors.DarkSurfaceHighest,
-    onSurfaceVariant = HermexColors.DarkSecondaryLabel,
-    surfaceContainerLowest = HermexColors.DarkBackground,
-    surfaceContainerLow = HermexColors.DarkSurfaceLow,
-    surfaceContainer = HermexColors.DarkSecondaryBackground,
-    surfaceContainerHigh = HermexColors.DarkSurfaceHigh,
-    surfaceContainerHighest = HermexColors.DarkSurfaceHighest,
-    outline = HermexColors.DarkSeparator,
-    outlineVariant = Color(0xFF2C2C2E),
-    error = HermexColors.ErrorDark,
+/** Sakura mode: full dark scheme built from EvaDesignTokens (audit P0-3: tokens wired in). */
+private val SakuraColors = darkColorScheme(
+    primary = EvaDesignTokens.Colors.SakuraAccent,
+    onPrimary = EvaDesignTokens.Colors.SakuraOnAccent,
+    primaryContainer = EvaDesignTokens.Colors.SakuraContainer,
+    onPrimaryContainer = EvaDesignTokens.Colors.SakuraText,
+    secondary = EvaDesignTokens.Colors.SakuraSecondary,
+    onSecondary = EvaDesignTokens.Colors.SakuraOnSecondary,
+    secondaryContainer = EvaDesignTokens.Colors.SakuraSecondaryContainer,
+    onSecondaryContainer = EvaDesignTokens.Colors.SakuraOnSecondaryContainer,
+    tertiary = EvaDesignTokens.Colors.StatusOnline,
+    onTertiary = EvaDesignTokens.Colors.SakuraOnTertiary,
+    background = EvaDesignTokens.Colors.SakuraBackground,
+    onBackground = Color.White,
+    surface = EvaDesignTokens.Colors.SurfaceDark,
+    onSurface = EvaDesignTokens.Colors.SakuraText,
+    surfaceVariant = EvaDesignTokens.Colors.SurfaceCardHighest,
+    onSurfaceVariant = EvaDesignTokens.Colors.SakuraTextMuted,
+    surfaceContainerLowest = EvaDesignTokens.Colors.VoidBlack,
+    surfaceContainerLow = EvaDesignTokens.Colors.SakuraSurfaceLow,
+    surfaceContainer = EvaDesignTokens.Colors.SurfaceCard,
+    surfaceContainerHigh = EvaDesignTokens.Colors.SurfaceCardHigh,
+    surfaceContainerHighest = EvaDesignTokens.Colors.SurfaceCardHighest,
+    outline = EvaDesignTokens.Colors.SakuraOutline,
+    outlineVariant = EvaDesignTokens.Colors.SakuraOutlineVariant,
+    error = EvaDesignTokens.Colors.StatusError,
     errorContainer = Color(0xFF3A1210),
     onErrorContainer = Color(0xFFFFB3AD),
 )
 
-private val LightColors = lightColorScheme(
-    primary = HermexColors.HermesGold,
-    onPrimary = Color.Black,
-    primaryContainer = Color(0xFFF2F2F7),
-    onPrimaryContainer = Color.Black,
-    secondary = HermexColors.AccentBlueLight,
-    onSecondary = Color.White,
-    secondaryContainer = Color(0xFFE0EEFF),
-    onSecondaryContainer = Color(0xFF00325C),
-    background = Color.White,
-    onBackground = Color.Black,
-    surface = Color(0xFFF2F2F7),
-    onSurface = Color.Black,
-    surfaceVariant = Color(0xFFE5E5EA),
-    onSurfaceVariant = Color(0xFF8A8A8E),
-    surfaceContainerLowest = Color.White,
-    surfaceContainerLow = Color(0xFFF7F7FA),
-    surfaceContainer = Color(0xFFF2F2F7),
-    surfaceContainerHigh = Color(0xFFECECF1),
-    surfaceContainerHighest = Color(0xFFE5E5EA),
-    outline = Color(0xFFC6C6C8),
-    outlineVariant = Color(0xFFE5E5EA),
-    error = HermexColors.ErrorLight,
-    errorContainer = Color(0xFFFFE9E7),
-    onErrorContainer = Color(0xFF7F1D16),
+/** Yandere mode: full dark scheme, shifted redder (audit: environment psychology). */
+private val YandereColors = darkColorScheme(
+    primary = EvaDesignTokens.Colors.YandereCrimson,
+    onPrimary = EvaDesignTokens.Colors.YandereOnAccent,
+    primaryContainer = EvaDesignTokens.Colors.YandereDarkBlood,
+    onPrimaryContainer = EvaDesignTokens.Colors.YandereText,
+    secondary = Color(0xFFFDA4AF),
+    onSecondary = EvaDesignTokens.Colors.YandereOnSecondary,
+    secondaryContainer = EvaDesignTokens.Colors.YandereSecondaryContainer,
+    onSecondaryContainer = EvaDesignTokens.Colors.YandereOnSecondaryContainer,
+    tertiary = EvaDesignTokens.Colors.YandereTertiary,
+    onTertiary = EvaDesignTokens.Colors.YandereOnTertiary,
+    background = EvaDesignTokens.Colors.YandereBackground,
+    onBackground = Color.White,
+    surface = EvaDesignTokens.Colors.YandereSurfaceDark,
+    onSurface = EvaDesignTokens.Colors.YandereText,
+    surfaceVariant = EvaDesignTokens.Colors.YandereSurfaceHighest,
+    onSurfaceVariant = EvaDesignTokens.Colors.YandereTextMuted,
+    surfaceContainerLowest = EvaDesignTokens.Colors.YandereSurfaceLowest,
+    surfaceContainerLow = EvaDesignTokens.Colors.YandereSurfaceLow,
+    surfaceContainer = EvaDesignTokens.Colors.YandereSurface,
+    surfaceContainerHigh = EvaDesignTokens.Colors.YandereSurfaceHigh,
+    surfaceContainerHighest = EvaDesignTokens.Colors.YandereSurfaceHighest,
+    outline = EvaDesignTokens.Colors.YandereOutline,
+    outlineVariant = EvaDesignTokens.Colors.YandereOutlineVariant,
+    error = EvaDesignTokens.Colors.StatusError,
+    errorContainer = Color(0xFF3A1210),
+    onErrorContainer = Color(0xFFFFB3AD),
 )
 
 @Composable
 fun HermexTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
+    val dualityMode by com.hermex.android.eva.EvaConfig.dualityMode.collectAsStateWithLifecycle()
+    val isSakura = dualityMode == com.hermex.android.eva.DualityMode.SAKURA
+
+    // Audit P0-2: the app is dark-first by design -- duality selects between two full
+    // dark environments (sakura garden / crimson terminal). The old fake-light branch
+    // (LightColors with a single primary swap) is gone, along with the mixed
+    // light/dark Frankenstein it produced on screens like Looksmax.
+    val targetScheme = if (isSakura) SakuraColors else YandereColors
+
+    // Audit P1-5: animate the mode switch (EvaDesignTokens.Motion.ModeSwitchDurationMs)
+    // instead of a hard cut. Each slot crossfades over the same 280ms budget.
+    val animated = ColorScheme(
+        primary = animateColorAsState(targetScheme.primary, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityPrimary").value,
+        onPrimary = animateColorAsState(targetScheme.onPrimary, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityOnPrimary").value,
+        primaryContainer = animateColorAsState(targetScheme.primaryContainer, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityPrimaryContainer").value,
+        onPrimaryContainer = animateColorAsState(targetScheme.onPrimaryContainer, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityOnPrimaryContainer").value,
+        inversePrimary = animateColorAsState(targetScheme.inversePrimary, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityInversePrimary").value,
+        secondary = animateColorAsState(targetScheme.secondary, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualitySecondary").value,
+        onSecondary = animateColorAsState(targetScheme.onSecondary, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityOnSecondary").value,
+        secondaryContainer = animateColorAsState(targetScheme.secondaryContainer, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualitySecondaryContainer").value,
+        onSecondaryContainer = animateColorAsState(targetScheme.onSecondaryContainer, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityOnSecondaryContainer").value,
+        tertiary = animateColorAsState(targetScheme.tertiary, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityTertiary").value,
+        onTertiary = animateColorAsState(targetScheme.onTertiary, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityOnTertiary").value,
+        tertiaryContainer = animateColorAsState(targetScheme.tertiaryContainer, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityTertiaryContainer").value,
+        onTertiaryContainer = animateColorAsState(targetScheme.onTertiaryContainer, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityOnTertiaryContainer").value,
+        background = animateColorAsState(targetScheme.background, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityBackground").value,
+        onBackground = animateColorAsState(targetScheme.onBackground, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityOnBackground").value,
+        surface = animateColorAsState(targetScheme.surface, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualitySurface").value,
+        onSurface = animateColorAsState(targetScheme.onSurface, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityOnSurface").value,
+        surfaceVariant = animateColorAsState(targetScheme.surfaceVariant, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualitySurfaceVariant").value,
+        onSurfaceVariant = animateColorAsState(targetScheme.onSurfaceVariant, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityOnSurfaceVariant").value,
+        surfaceTint = animateColorAsState(targetScheme.surfaceTint, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualitySurfaceTint").value,
+        inverseSurface = animateColorAsState(targetScheme.inverseSurface, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityInverseSurface").value,
+        inverseOnSurface = animateColorAsState(targetScheme.inverseOnSurface, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityInverseOnSurface").value,
+        error = animateColorAsState(targetScheme.error, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityError").value,
+        onError = animateColorAsState(targetScheme.onError, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityOnError").value,
+        errorContainer = animateColorAsState(targetScheme.errorContainer, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityErrorContainer").value,
+        onErrorContainer = animateColorAsState(targetScheme.onErrorContainer, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityOnErrorContainer").value,
+        outline = animateColorAsState(targetScheme.outline, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityOutline").value,
+        outlineVariant = animateColorAsState(targetScheme.outlineVariant, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityOutlineVariant").value,
+        scrim = animateColorAsState(targetScheme.scrim, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualityScrim").value,
+        surfaceBright = animateColorAsState(targetScheme.surfaceBright, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualitySurfaceBright").value,
+        surfaceDim = animateColorAsState(targetScheme.surfaceDim, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualitySurfaceDim").value,
+        surfaceContainer = animateColorAsState(targetScheme.surfaceContainer, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualitySurfaceContainer").value,
+        surfaceContainerHigh = animateColorAsState(targetScheme.surfaceContainerHigh, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualitySurfaceContainerHigh").value,
+        surfaceContainerHighest = animateColorAsState(targetScheme.surfaceContainerHighest, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualitySurfaceContainerHighest").value,
+        surfaceContainerLow = animateColorAsState(targetScheme.surfaceContainerLow, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualitySurfaceContainerLow").value,
+        surfaceContainerLowest = animateColorAsState(targetScheme.surfaceContainerLowest, tween(EvaDesignTokens.Motion.ModeSwitchDurationMs), label = "dualitySurfaceContainerLowest").value,
+    )
+
     MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
+        colorScheme = animated,
         typography = HermexTypography,
         content = content,
     )

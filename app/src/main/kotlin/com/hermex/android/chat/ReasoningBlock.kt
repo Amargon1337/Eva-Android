@@ -1,5 +1,6 @@
 package com.hermex.android.chat
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -24,13 +25,21 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.hermex.android.ui.theme.HermexRadii
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.hermex.android.character.EvaHaptics
+import com.hermex.android.eva.DualityMode
+import com.hermex.android.eva.EvaConfig
+import com.hermex.android.ui.components.LivePulseDot
+import com.hermex.android.ui.theme.EvaDesignTokens
 
-/** A simple collapsible block for [ChatUiState.streamingReasoning] -- no markdown rendering in
- * this MVP, just the raw "thinking" text with a show/hide toggle. Styled as a first-class Hermex
- * surface (bordered, rounded via the shared [HermexRadii.Cell] token) to match the app-wide
- * card language rather than a bare colored background. */
+/**
+ * Collapsible Material 3 Expressive Bento card for streaming reasoning with live pulse dot,
+ * adaptive SQLite/Glitch persona labels, and 120 Hz spring expansion.
+ */
 @Composable
 fun ReasoningBlock(
     text: String,
@@ -38,26 +47,55 @@ fun ReasoningBlock(
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(initiallyExpanded) }
+    val context = LocalContext.current
+    val dualityMode by EvaConfig.dualityMode.collectAsStateWithLifecycle()
+    val isSakura = dualityMode == DualityMode.SAKURA
+
+    val accentColor = if (isSakura) EvaDesignTokens.Sakura.Pink else EvaDesignTokens.Yandere.Crimson
+    val headerLabel = if (isSakura) "🌸 Мысли Евы · Память SQLite" else "🦇 Сканирование намерений Ивана · GLITCH_SYNC"
+    val borderColor = if (isSakura) EvaDesignTokens.Sakura.Border else EvaDesignTokens.Yandere.Wine.copy(alpha = 0.45f)
+    val containerBg = if (isSakura) {
+        MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.65f)
+    } else {
+        EvaDesignTokens.Yandere.Surface.copy(alpha = 0.85f)
+    }
 
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .clickable { expanded = !expanded },
-        shape = RoundedCornerShape(HermexRadii.Cell),
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+            .clickable {
+                EvaHaptics.click(context)
+                expanded = !expanded
+            },
+        shape = RoundedCornerShape(EvaDesignTokens.Shapes.Card),
+        color = containerBg,
+        border = BorderStroke(EvaDesignTokens.Hairline, borderColor),
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(
+            modifier = Modifier
+                .padding(14.dp)
+                .animateContentSize()
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                LivePulseDot(color = accentColor, size = 7.dp)
+                Spacer(Modifier.width(8.dp))
                 Text(
-                    text = "Thinking",
+                    text = headerLabel,
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Bold,
+                    color = accentColor,
                 )
-                Spacer(Modifier.width(4.dp))
+                Spacer(Modifier.width(8.dp))
+                val wordCount = text.split(Regex("\\s+")).filter { it.isNotBlank() }.size
+                Text(
+                    text = "$wordCount слов",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                )
+                Spacer(Modifier.weight(1f))
                 Icon(
                     imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    contentDescription = if (expanded) "Свернуть" else "Развернуть",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -67,7 +105,8 @@ fun ReasoningBlock(
                         text = text,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp),
+                        lineHeight = 18.sp,
+                        modifier = Modifier.padding(top = 8.dp),
                     )
                 }
             }

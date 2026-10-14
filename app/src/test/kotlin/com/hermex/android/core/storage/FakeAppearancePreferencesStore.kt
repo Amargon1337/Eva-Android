@@ -6,10 +6,12 @@ internal class FakeAppearancePreferencesStore(
     initialHeaderLogoColor: HeaderLogoColor = HeaderLogoColor.DEFAULT,
     initialAppIconVariant: AppIconVariant = AppIconVariant.SYSTEM,
     initialUserInitials: String = "BD",
+    initialDualityMode: com.hermex.android.eva.DualityMode = com.hermex.android.eva.DualityMode.SAKURA,
 ) : AppearancePreferencesStore {
     var stored: HeaderLogoColor = initialHeaderLogoColor
     var storedIcon: AppIconVariant = initialAppIconVariant
     var storedInitials: String = initialUserInitials
+    var storedDualityMode: com.hermex.android.eva.DualityMode = initialDualityMode
 
     override suspend fun loadHeaderLogoColor(): HeaderLogoColor = stored
 
@@ -27,5 +29,11 @@ internal class FakeAppearancePreferencesStore(
 
     override suspend fun setUserInitials(initials: String) {
         storedInitials = initials
+    }
+
+    override suspend fun loadDualityMode(): com.hermex.android.eva.DualityMode = storedDualityMode
+
+    override suspend fun setDualityMode(mode: com.hermex.android.eva.DualityMode) {
+        storedDualityMode = mode
     }
 }

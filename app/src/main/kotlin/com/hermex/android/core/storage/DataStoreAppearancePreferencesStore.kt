@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.hermex.android.eva.DualityMode
 import kotlinx.coroutines.flow.firstOrNull
 
 private val Context.appearancePreferencesDataStore by preferencesDataStore(name = "hermex_appearance_preferences")
@@ -12,6 +13,7 @@ class DataStoreAppearancePreferencesStore(private val context: Context) : Appear
     private val headerLogoColorKey = stringPreferencesKey("header_logo_color")
     private val appIconVariantKey = stringPreferencesKey("app_icon_variant")
     private val userInitialsKey = stringPreferencesKey("user_initials")
+    private val dualityModeKey = stringPreferencesKey("duality_mode")
 
     override suspend fun loadHeaderLogoColor(): HeaderLogoColor {
         val stored = context.appearancePreferencesDataStore.data.firstOrNull()?.get(headerLogoColorKey)
@@ -38,5 +40,14 @@ class DataStoreAppearancePreferencesStore(private val context: Context) : Appear
 
     override suspend fun setUserInitials(initials: String) {
         context.appearancePreferencesDataStore.edit { prefs -> prefs[userInitialsKey] = initials }
+    }
+
+    override suspend fun loadDualityMode(): DualityMode {
+        val stored = context.appearancePreferencesDataStore.data.firstOrNull()?.get(dualityModeKey)
+        return DualityMode.fromStoredNameOrDefault(stored)
+    }
+
+    override suspend fun setDualityMode(mode: DualityMode) {
+        context.appearancePreferencesDataStore.edit { prefs -> prefs[dualityModeKey] = mode.name }
     }
 }

@@ -1,5 +1,6 @@
 package com.hermex.android.settings
 
+import com.hermex.android.ui.components.EvaHeaderTitle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -7,8 +8,10 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,11 +23,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import android.widget.Toast
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -66,6 +71,16 @@ import com.hermex.android.PRIVACY_POLICY_URL
 import com.hermex.android.R
 import com.hermex.android.core.storage.AppIconVariant
 import com.hermex.android.core.storage.HeaderLogoColor
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import com.hermex.android.eva.DualityMode
+import com.hermex.android.eva.EvaConfig
+import com.hermex.android.ui.components.ExpressivePill
+import com.hermex.android.ui.components.LivePulseDot
+import com.hermex.android.ui.theme.EvaDesignTokens
 import com.hermex.android.ui.theme.HermexReadableContent
 import com.hermex.android.ui.theme.HermexRadii
 import com.hermex.android.navigation.LocalHermexDrawerOpener
@@ -98,6 +113,11 @@ fun SettingsScreen(
     var showInitialsDialog by remember { mutableStateOf(false) }
     var showNotificationEducation by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val currentDualityMode by EvaConfig.dualityMode.collectAsStateWithLifecycle()
+    val hapticFeedback = LocalHapticFeedback.current
+    val coroutineScope = rememberCoroutineScope()
+    var latencyResult by remember { mutableStateOf<String?>(null) }
+    var isPinging by remember { mutableStateOf(false) }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
@@ -115,7 +135,7 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { showNotificationEducation = false },
             shape = RoundedCornerShape(HermexRadii.Dialog),
-            title = { Text("Notifications") },
+            title = { Text("уведомления") },
             text = {
                 Text("Notifications are disabled. Enable them in Settings → Apps → Hermex → Notifications.")
             },
@@ -172,7 +192,7 @@ fun SettingsScreen(
                 TextButton(onClick = {
                     showInitialsDialog = false
                     viewModel.setUserInitials(draftInitials)
-                }) { Text("Save") }
+                }) { Text("сохранить") }
             },
             dismissButton = {
                 TextButton(onClick = { showInitialsDialog = false }) { Text("Cancel") }
@@ -213,25 +233,23 @@ fun SettingsScreen(
 
     Scaffold(
         modifier = modifier,
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {
                     if (!isPaneMode) {
-                        Text(
-                            "Settings",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleLarge,
-                        )
+                        EvaHeaderTitle("настройки", "сервер · вид · уведомления")
                     }
                 },
                 navigationIcon = {
                     IconButton(onClick = { openDrawer() }) {
-                        Icon(Icons.Filled.Menu, contentDescription = "Open menu")
+                        Icon(Icons.Filled.Menu, contentDescription = "Меню", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    containerColor = Color.Transparent,
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White
                 ),
             )
         },
@@ -253,22 +271,346 @@ fun SettingsScreen(
                     }
                 }
 
-                SectionLabel("Active Server")
-                Card {
-                    SettingsRow(
-                        "Server",
-                        uiState.activeServerName?.let { "$it — ${uiState.serverUrl}" } ?: (uiState.serverUrl ?: "--"),
-                        onClick = onOpenServers,
-                    )
-                    SettingsRow("Status", if (uiState.serverUrl != null) "Connected" else "Not signed in")
-                    SettingsRow("Default Model", uiState.defaultModel ?: "--", onClick = onOpenDefaultModel)
-                    SettingsRow(
-                        "Connection Headers",
-                        if (uiState.customHeaderCount == 0) "None" else "${uiState.customHeaderCount} configured",
-                        onClick = onOpenCustomHeaders,
-                    )
-                    SettingsRow("Version", uiState.serverVersion ?: "--", showDivider = false)
+                // SCREEN 10: REFERENCE BOARD SETTINGS LIST
+                Surface(
+                    shape = RoundedCornerShape(22.dp),
+                    color = if (currentDualityMode == DualityMode.SAKURA) Color(0xFF221128).copy(alpha = 0.88f) else Color(0xFF1E070D).copy(alpha = 0.90f),
+                    border = BorderStroke(1.dp, if (currentDualityMode == DualityMode.SAKURA) Color(0x35F472B6) else Color(0x35E11D48)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        // Server Row: Server | [Server selector v]
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Dns,
+                                    contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.8f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    text = "Server",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White
+                                )
+                            }
+                            Surface(
+                                onClick = onOpenServers,
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color.White.copy(alpha = 0.1f),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = uiState.activeServerName ?: "Server selector",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = Color.White
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Icon(
+                                        imageVector = Icons.Outlined.KeyboardArrowDown,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 10.dp),
+                            color = Color.White.copy(alpha = 0.08f)
+                        )
+
+                        // 1. Connection
+                        ReferenceSettingsRow(
+                            icon = Icons.Outlined.Link,
+                            label = "Connection",
+                            onClick = onOpenCustomHeaders
+                        )
+
+                        // 2. Appearance -- opens the color picker dialog (dedup 14.09: the old
+                        // standalone "Appearance" card merged into this row).
+                        ReferenceSettingsRow(
+                            icon = Icons.Outlined.Palette,
+                            label = "Appearance",
+                            onClick = { showColorPicker = true }
+                        )
+                        ReferenceSettingsRow(
+                            icon = Icons.Outlined.Face,
+                            label = "иконка приложения",
+                            onClick = { showAppIconPicker = true }
+                        )
+                        ReferenceSettingsRow(
+                            icon = Icons.Outlined.Person,
+                            label = "User Name",
+                            onClick = { showInitialsDialog = true }
+                        )
+
+                        // 3. Notifications -- the single toggle (dedup 14.09): replaces the old
+                        // separate "Notifications" card below, same permission-aware logic.
+                        ReferenceSettingsRow(
+                            icon = Icons.Outlined.Notifications,
+                            label = "уведомления",
+                            onClick = {
+                                val enable = !uiState.notificationsEnabled
+                                if (enable) {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                        val permission = Manifest.permission.POST_NOTIFICATIONS
+                                        if (androidx.core.content.ContextCompat.checkSelfPermission(context, permission)
+                                            == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                        ) {
+                                            viewModel.setNotificationsEnabled(true)
+                                        } else {
+                                            notificationPermissionLauncher.launch(permission)
+                                        }
+                                    } else {
+                                        viewModel.setNotificationsEnabled(true)
+                                    }
+                                } else {
+                                    viewModel.setNotificationsEnabled(false)
+                                }
+                            }
+                        )
+
+                        // 4. Voice
+                        ReferenceSettingsRow(
+                            icon = Icons.Outlined.Mic,
+                            label = "Voice",
+                            onClick = {
+                                EvaConfig.autoVoicePlay = !EvaConfig.autoVoicePlay
+                                Toast.makeText(
+                                    context,
+                                    "Voice playback: ${if (EvaConfig.autoVoicePlay) "Enabled" else "Disabled"}",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        )
+
+                        // 5. Models
+                        ReferenceSettingsRow(
+                            icon = Icons.Outlined.SmartToy,
+                            label = "Models",
+                            onClick = onOpenDefaultModel
+                        )
+
+                        // 6. Memory
+                        ReferenceSettingsRow(
+                            icon = Icons.Outlined.Folder,
+                            label = "Memory",
+                            onClick = {
+                                Toast.makeText(context, "Memory management active", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+
+                        // 7. Privacy
+                        ReferenceSettingsRow(
+                            icon = Icons.Outlined.Lock,
+                            label = "Privacy",
+                            onClick = {
+                                runCatching {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_POLICY_URL)))
+                                }
+                            }
+                        )
+
+                        // 8. Reduced Motion (with toggle switch)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Outlined.RemoveRedEye,
+                                    contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.8f),
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    text = "Reduced Motion",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color.White
+                                )
+                            }
+                            Switch(
+                                checked = !EvaConfig.streamPulseAnimation,
+                                onCheckedChange = { reduced ->
+                                    EvaConfig.streamPulseAnimation = !reduced
+                                }
+                            )
+                        }
+
+                        // 9. About -- now also hosts Copy Diagnostics and Subagent Sessions
+                        // (dedup 14.09: the old standalone "App"/"Session List" cards merged here).
+                        ReferenceSettingsRow(
+                            icon = Icons.Outlined.Info,
+                            label = "About",
+                            onClick = {
+                                Toast.makeText(
+                                    context,
+                                    "Hermex v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        )
+                        ReferenceSettingsRow(
+                            icon = Icons.Outlined.BugReport,
+                            label = "Copy Diagnostics",
+                            onClick = { viewModel.copyDiagnostics(context) }
+                        )
+                        ReferenceSettingsRow(
+                            icon = Icons.Outlined.ViewStream,
+                            label = "Subagent Sessions",
+                            onClick = { viewModel.setShowSubagentSessions(!uiState.showSubagentSessions) }
+                        )
+                    }
                 }
+
+                Spacer(Modifier.height(20.dp))
+                SectionLabel("Eva Companion & Персонализация")
+                Card {
+                    Column(modifier = Modifier.padding(vertical = 12.dp)) {
+                        Text(
+                            text = "Режим дуальности личности Евы",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Определяет тон общения, стиль ответов и цветовую гамму интерфейса",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            DualityMode.entries.forEach { mode ->
+                                val isSelected = currentDualityMode == mode
+                                val accentColor = if (mode == DualityMode.SAKURA) EvaDesignTokens.Colors.SakuraAccent else EvaDesignTokens.Colors.YandereCrimson
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = if (isSelected) accentColor.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceContainer,
+                                    border = BorderStroke(if (isSelected) 1.5.dp else 1.dp, if (isSelected) accentColor else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable {
+                                            EvaConfig.setMode(mode)
+                                            if (EvaConfig.hapticsEnabled) {
+                                                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            }
+                                        }
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(if (mode == DualityMode.SAKURA) "🌸" else "🦇", style = MaterialTheme.typography.titleMedium)
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                text = mode.badge,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSelected) accentColor else MaterialTheme.colorScheme.onSurface
+                                            )
+                                        }
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            text = mode.desc,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            lineHeight = 14.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    SettingsDivider()
+                    SettingsSwitchRow(
+                        label = "Тактильный отклик (Haptics)",
+                        description = "Вибрация при отправке сообщений, нажатиях и раскрытии мыслей Евы",
+                        checked = EvaConfig.hapticsEnabled,
+                        onCheckedChange = { EvaConfig.hapticsEnabled = it }
+                    )
+                    SettingsSwitchRow(
+                        label = "Пульсирующие анимации присутствия",
+                        description = "Живой дыхательный индикатор работы модели и статуса ПК",
+                        checked = EvaConfig.streamPulseAnimation,
+                        onCheckedChange = { EvaConfig.streamPulseAnimation = it },
+                        showDivider = false
+                    )
+                }
+
+                Spacer(Modifier.height(24.dp))
+                // Dedup 14.09: Server / Default Model / Connection Headers / Version rows removed
+                // -- they duplicated the reference-board list above (Server/Models/Connection/About).
+                // Only the unique bits stay: status, the Tailscale endpoint toggle, and ping.
+                SectionLabel("Tailscale & Диагностика")
+                Card {
+                    SettingsRow("Status", if (uiState.serverUrl != null) "Connected" else "Not signed in")
+                    SettingsRow(
+                        label = "Tailscale Endpoint (Нажмите для переключения)",
+                        value = EvaConfig.baseUrl,
+                        onClick = {
+                            EvaConfig.toggleNetworkHost()
+                            if (EvaConfig.hapticsEnabled) {
+                                hapticFeedback.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            }
+                        }
+                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Диагностика задержки (Ping)", style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    text = latencyResult ?: "Проверить реальную задержку соединения с сервером",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (latencyResult?.startsWith("🟢") == true) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (isPinging) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                            } else {
+                                Button(
+                                    onClick = {
+                                        isPinging = true
+                                        coroutineScope.launch {
+                                            val (ok, ms) = EvaConfig.measureLatencyMs()
+                                            isPinging = false
+                                            latencyResult = if (ok) "🟢 ${ms}ms · Tailscale TLS в норме" else "🔴 Ошибка отклика (${ms}ms)"
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text("Ping", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        }
+                    }
+                }
+
 
                 Spacer(Modifier.height(24.dp))
                 SectionLabel("Chat")
@@ -284,95 +626,6 @@ fun SettingsScreen(
                         description = "Tool call blocks start expanded instead of collapsed. Tapping a block still toggles it.",
                         checked = uiState.expandToolCallsByDefault,
                         onCheckedChange = viewModel::setExpandToolCallsByDefault,
-                        showDivider = false,
-                    )
-                }
-
-                Spacer(Modifier.height(24.dp))
-                SectionLabel("Notifications")
-                Card {
-                    SettingsSwitchRow(
-                        label = "Response completion notifications",
-                        description = "Notify me when a response finishes while Hermex is in the background.",
-                        checked = uiState.notificationsEnabled,
-                        onCheckedChange = { enabled ->
-                            if (enabled) {
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                    val permission = Manifest.permission.POST_NOTIFICATIONS
-                                    if (androidx.core.content.ContextCompat.checkSelfPermission(context, permission)
-                                        == android.content.pm.PackageManager.PERMISSION_GRANTED
-                                    ) {
-                                        viewModel.setNotificationsEnabled(true)
-                                    } else {
-                                        notificationPermissionLauncher.launch(permission)
-                                    }
-                                } else {
-                                    viewModel.setNotificationsEnabled(true)
-                                }
-                            } else {
-                                viewModel.setNotificationsEnabled(false)
-                            }
-                        },
-                        showDivider = false,
-                    )
-                }
-
-                Spacer(Modifier.height(24.dp))
-                SectionLabel("Session List")
-                Card {
-                    SettingsSwitchRow(
-                        label = "Subagent Sessions",
-                        description = "Show sessions created by subagents in the session list.",
-                        checked = uiState.showSubagentSessions,
-                        onCheckedChange = viewModel::setShowSubagentSessions,
-                        showDivider = false,
-                    )
-                }
-
-                Spacer(Modifier.height(24.dp))
-                SectionLabel("Appearance")
-                Card {
-                    SettingsRow(
-                        "Header Logo Color",
-                        uiState.headerLogoColor.displayName,
-                        onClick = { showColorPicker = true },
-                    )
-                    ListItem(
-                        headlineContent = { Text("User Name") },
-                        supportingContent = { Text(uiState.userInitials) },
-                        trailingContent = {
-                            TextButton(onClick = { showInitialsDialog = true }) { Text("Edit") }
-                        },
-                    )
-                    SettingsDivider()
-                    SettingsRow(
-                        "App Icon",
-                        uiState.appIconVariant.displayName,
-                        onClick = { showAppIconPicker = true },
-                        showDivider = false,
-                    )
-                }
-
-                Spacer(Modifier.height(24.dp))
-                SectionLabel("App")
-                Card {
-                    SettingsRow("Version", BuildConfig.VERSION_NAME)
-                    SettingsRow("Build", BuildConfig.VERSION_CODE.toString())
-                    SettingsRow(
-                        "Privacy Policy",
-                        "View online",
-                        onClick = {
-                            runCatching {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse(PRIVACY_POLICY_URL)),
-                                )
-                            }
-                        },
-                    )
-                    SettingsRow(
-                        "Copy Diagnostics",
-                        "Version, server, headers",
-                        onClick = { viewModel.copyDiagnostics(context) },
                         showDivider = false,
                     )
                 }
@@ -454,15 +707,22 @@ private fun SectionLabel(text: String) {
 
 @Composable
 private fun Card(content: @Composable () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(HermexRadii.SettingsCard))
-            .padding(horizontal = 16.dp),
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.65f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)),
     ) {
-        content()
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+        ) {
+            content()
+        }
     }
 }
+
 
 @Composable
 private fun SettingsDivider() {
@@ -519,7 +779,7 @@ private fun HeaderLogoColorDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
+            TextButton(onClick = onDismiss) { Text("закрыть") }
         },
     )
 }
@@ -604,3 +864,42 @@ private fun SettingsSwitchRow(
         }
     }
 }
+
+@Composable
+private fun ReferenceSettingsRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 11.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.8f),
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = label,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.White
+            )
+        }
+        Icon(
+            imageVector = Icons.Outlined.ChevronRight,
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.45f),
+            modifier = Modifier.size(18.dp)
+        )
+    }
+}
+

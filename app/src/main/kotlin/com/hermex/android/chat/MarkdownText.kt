@@ -10,7 +10,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
-import com.hermex.android.ui.theme.HermexColors
+import com.hermex.android.ui.theme.EvaDesignTokens
 import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.Markwon
 import io.noties.markwon.core.MarkwonTheme
@@ -40,7 +40,7 @@ fun MarkdownText(
     val context = LocalContext.current
     val linkColor = MaterialTheme.colorScheme.primary.toArgb()
     val quoteColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f).toArgb()
-    val codeBackgroundColor = HermexColors.CodeBackgroundDark.toArgb()
+    val codeBackgroundColor = EvaDesignTokens.Colors.CodeBackground.toArgb()
     val codeTextColor = MaterialTheme.colorScheme.onSurface.toArgb()
     val markwon = remember {
         Markwon.builder(context)
@@ -68,7 +68,12 @@ fun MarkdownText(
         modifier = modifier,
         factory = { ctx ->
             TextView(ctx).apply {
-                movementMethod = LinkMovementMethod.getInstance()
+                // setTextIsSelectable(true) gives native text selection + copy on long-press.
+                // NOTE: a selectable TextView dispatches its own touch events, so we must NOT
+                // set LinkMovementMethod -- it would eat every touch (that's exactly why
+                // long-press copy never worked before). On API 24+ a selectable TextView still
+                // opens links on tap through its built-in link handling.
+                setTextIsSelectable(true)
                 textSize = 14f // sp, matches MaterialTheme.typography.bodyMedium
                 setLineSpacing(0f, 1.35f)
                 setPadding(0, 0, 0, 0)

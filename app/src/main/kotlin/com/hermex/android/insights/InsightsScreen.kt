@@ -1,423 +1,329 @@
 package com.hermex.android.insights
 
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
+import androidx.compose.material.icons.outlined.ArrowBack
+import androidx.compose.material3.*
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import android.os.Build
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.hermex.android.core.network.dto.InsightsDailyToken
-import com.hermex.android.core.network.dto.InsightsModelBreakdown
-import com.hermex.android.core.network.dto.SessionSummary
-import com.hermex.android.navigation.LocalHermexDrawerOpener
-import com.hermex.android.ui.theme.HermexReadableContent
-import com.hermex.android.ui.theme.HermexRadii
-import java.util.Locale
+import com.hermex.android.character.EvaHaptics
+import com.hermex.android.eva.DualityMode
+import com.hermex.android.eva.EvaConfig
+import com.hermex.android.ui.theme.EvaDesignTokens
+import com.hermex.android.ui.components.EvaGlassCard
+import androidx.compose.ui.platform.LocalContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InsightsScreen(
     viewModel: InsightsViewModel,
     onBack: () -> Unit,
+    onOpenCategory: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val openDrawer = LocalHermexDrawerOpener.current
+    val context = LocalContext.current
+    val duality by EvaConfig.dualityMode.collectAsStateWithLifecycle()
+    val isSakura = duality == DualityMode.SAKURA
+    val accent = if (isSakura) EvaDesignTokens.Colors.SakuraAccent else EvaDesignTokens.Colors.YandereCrimson
 
     Scaffold(
-        modifier = modifier,
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        "Usage Analytics",
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleLarge,
-                    )
+                    Column {
+                        Text("инсайты", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color.White, fontFamily = FontFamily.Serif)
+                        Text("что я поняла за последние 30 дней", fontSize = 11.sp, color = Color.White.copy(alpha = 0.62f))
+                    }
                 },
                 navigationIcon = {
-                    IconButton(onClick = { openDrawer() }) {
-                        Icon(Icons.Filled.Menu, contentDescription = "Open menu")
+                    IconButton(onClick = { EvaHaptics.click(context); onBack() }) {
+                        Icon(Icons.Outlined.ArrowBack, "Назад", tint = Color.White)
                     }
                 },
-                actions = {
-                    if (uiState.isLoading) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    } else {
-                        IconButton(onClick = { viewModel.load() }) {
-                            Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                ),
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
         },
-    ) { innerPadding ->
-        HermexReadableContent(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-        ) {
-            when {
-                // Nothing has ever loaded yet -- full-screen spinner, matching iOS's
-                // `isLoading && !hasLoadedAnalytics`.
-                uiState.isLoading && !uiState.hasLoadedAnalytics -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator()
-                        Spacer(Modifier.height(12.dp))
-                        Text("Loading analytics...", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+        containerColor = Color.Transparent,
+        modifier = modifier
+    ) { padding ->
+        Box(Modifier.fillMaxSize().background(Color.Transparent)) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp).padding(top = padding.calculateTopPadding()),
+                contentPadding = PaddingValues(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                item { Spacer(Modifier.height(2.dp)) }
+                if (uiState.isLoading) {
+                    item { Text("думаю о нас…", color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp, fontStyle = FontStyle.Italic) }
+                }
+                uiState.errorMessage?.let {
+                    item { Text("студия молчит: $it", color = Color(0xFFF59E0B), fontSize = 12.sp) }
                 }
 
-                // Never loaded anything and the last attempt failed outright (both server
-                // insights and the sessions fallback failed).
-                uiState.errorMessage != null && !uiState.hasLoadedAnalytics -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(
-                        modifier = Modifier.padding(32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
+                // hero — modern: huge number + caption + glass
+                item {
+                    // hero — glass
+                    Surface(
+                        shape = RoundedCornerShape(24.dp),
+                        color = Color.White.copy(alpha = 0.045f),
+                        border = BorderStroke(1.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = 0.16f), accent.copy(alpha = 0.22f)))),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(
-                            Icons.Filled.Warning,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(32.dp),
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            "Could Not Load Analytics",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            uiState.errorMessage.orEmpty(),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        Button(
-                            onClick = { viewModel.load() },
-                            shape = RoundedCornerShape(HermexRadii.Cell),
-                        ) { Text("Try Again") }
+                        Row(Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalAlignment = Alignment.Bottom) {
+                            Text("${uiState.totalMemories}", fontSize = 46.sp, fontWeight = FontWeight.Bold, color = Color.White, fontFamily = FontFamily.Monospace, lineHeight = 46.sp)
+                            androidx.compose.foundation.layout.Spacer(Modifier.width(10.dp))
+                            androidx.compose.foundation.layout.Column(Modifier.weight(1f)) {
+                                Text("фактов", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White, lineHeight = 14.sp)
+                                Text("с датой и источником · 30 дней", fontSize = 11.sp, color = Color.White.copy(alpha = 0.62f), lineHeight = 14.sp)
+                            }
+                            Box(Modifier.size(10.dp).clip(CircleShape).background(accent))
+                        }
                     }
                 }
 
-                // No error, but genuinely nothing to show (e.g. a brand-new server with no
-                // sessions yet).
-                !uiState.hasLoadedAnalytics -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(
-                        modifier = Modifier.padding(32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Icon(
-                            Icons.Filled.Info,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(32.dp),
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            "No Data",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Session usage data will appear here once you have conversations.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                if (uiState.byCategory.isNotEmpty()) {
+                    item { SectionLabel("карта памяти", accent) }
+                    item { Card { uiState.byCategory.take(8).forEach { CategoryBar(it.category, it.count, uiState.totalMemories.coerceAtLeast(1), accent, onClick = { onOpenCategory(it.category) }) } } }
+                }
+
+                if (uiState.recent.isNotEmpty()) {
+                    item { SectionLabel("что запомнила недавно", accent) }
+                    items(uiState.recent.take(10), key = { it.id }) { r ->
+                        Card {
+                            Row(verticalAlignment = Alignment.Top) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("«${r.content}»", fontSize = 12.5.sp, color = Color.White, lineHeight = 18.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                                    Spacer(Modifier.height(6.dp))
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text(r.category, fontSize = 10.sp, color = accent)
+                                        Text(r.importance.lowercase(), fontSize = 10.sp, color = Color.White.copy(alpha = 0.45f))
+                                        Text(r.createdAt, fontSize = 10.sp, color = Color.White.copy(alpha = 0.35f), fontFamily = FontFamily.Monospace)
+                                    }
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                IconButton(onClick = { viewModel.deleteMemory(r.id) }, modifier = Modifier.size(28.dp)) {
+                                    Text("×", color = Color.White.copy(alpha = 0.35f), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
                     }
                 }
 
-                else -> InsightsContent(uiState, viewModel::selectTimeframe)
+                if (uiState.doubts.isNotEmpty()) {
+                    item { SectionLabel("мои сомнения · confidence < 85%", Color(0xFFF59E0B)) }
+                    items(uiState.doubts, key = { it.id }) { d ->
+                        Card {
+                            Row(verticalAlignment = Alignment.Top) {
+                                Box(Modifier.width(3.dp).height(40.dp).clip(CircleShape).background(Color(0xFFF59E0B)))
+                                Spacer(Modifier.width(10.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(d.content, fontSize = 12.5.sp, color = Color.White.copy(alpha = 0.9f), lineHeight = 18.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                                    Text("верю на ${(d.confidence * 100).toInt()}% · ${d.status.lowercase()}", fontSize = 10.5.sp, color = Color(0xFFF59E0B))
+                                }
+                                IconButton(onClick = { viewModel.deleteMemory(d.id) }, modifier = Modifier.size(28.dp)) {
+                                    Text("×", color = Color.White.copy(alpha = 0.35f), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (uiState.paradoxes.isNotEmpty()) {
+                    item { SectionLabel("парадоксы человека", Color(0xFFFB7185)) }
+                    items(uiState.paradoxes, key = { it.id }) { p ->
+                        Card {
+                            Row(verticalAlignment = Alignment.Top) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("«${p.hypothesis}»", fontSize = 12.5.sp, color = Color.White, fontStyle = FontStyle.Italic, lineHeight = 18.sp, maxLines = 4, overflow = TextOverflow.Ellipsis)
+                                    Spacer(Modifier.height(4.dp))
+                                    Text("причина: ${p.reason.ifEmpty { "не назвал(а)" }} · ${(p.confidence * 100).toInt()}%", fontSize = 10.5.sp, color = Color.White.copy(alpha = 0.5f))
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                IconButton(onClick = { viewModel.deleteMemory(p.id) }, modifier = Modifier.size(28.dp)) {
+                                    Text("×", color = Color.White.copy(alpha = 0.35f), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (uiState.thoughtsByDay.isNotEmpty()) {
+                    item { SectionLabel("ритм моей головы (30 дней)", accent) }
+                    item {
+                        Card {
+                            val maxC = (uiState.thoughtsByDay.maxOfOrNull { it.count } ?: 1).coerceAtLeast(1)
+                            Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                uiState.thoughtsByDay.takeLast(21).forEachIndexed { i, d ->
+                                    val h = (d.count.toFloat() / maxC)
+                                    Box(
+                                        modifier = Modifier.weight(1f)
+                                            .fillMaxHeight(if (h < 0.08f) 0.08f else h)
+                                            .clip(RoundedCornerShape(3.dp))
+                                            .background(if (i == uiState.thoughtsByDay.takeLast(21).lastIndex) accent else accent.copy(alpha = 0.28f))
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Text("${uiState.thoughtsByDay.sumOf { it.count }} мыслей · вайбы: ${uiState.moodMix.joinToString(" · ") { "${it.category} ${it.count}" }}",
+                                fontSize = 10.5.sp, color = Color.White.copy(alpha = 0.5f))
+                        }
+                    }
+                }
+
+                if (uiState.weight.isNotEmpty()) {
+                    item { SectionLabel("вес (последние замеры)", Color(0xFF38BDF8)) }
+                    item {
+                        Card {
+                            Row(Modifier.fillMaxWidth().height(60.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                val kgs = uiState.weight.takeLast(14).map { it.kg }
+                                val lo = (kgs.minOrNull() ?: 0.0) - 0.5
+                                val hi = (kgs.maxOrNull() ?: 1.0) + 0.5
+                                kgs.forEachIndexed { i, kg ->
+                                    val h = ((kg - lo) / (hi - lo).coerceAtLeast(0.1)).toFloat()
+                                    Box(Modifier.weight(1f).fillMaxHeight(h.coerceIn(0.12f, 1f)).clip(RoundedCornerShape(3.dp))
+                                        .background(Color(0xFF38BDF8).copy(alpha = if (i == kgs.lastIndex) 1f else 0.35f)))
+                                }
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Text("${uiState.weight.last().kg} кг · сегодня", fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f))
+                        }
+                    }
+                }
+
+                uiState.looksmax?.let { lm ->
+                    item { SectionLabel("looksmax · средний могг", Color(0xFFF472B6)) }
+                    item {
+                        Card {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("${String.format("%.1f", lm.avg)}%", fontSize = 30.sp, fontWeight = FontWeight.Bold,
+                                        color = Color.White, fontFamily = FontFamily.Monospace)
+                                    Text("среднее по ${lm.count} фото. разброс ${lm.worst}–${lm.best}%.",
+                                        fontSize = 11.5.sp, color = Color.White.copy(alpha = 0.62f), lineHeight = 16.sp)
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text("сейчас", fontSize = 9.5.sp, color = Color.White.copy(alpha = 0.45f))
+                                    Text("${lm.last}%", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color(0xFFF472B6), fontFamily = FontFamily.Monospace)
+                                    lm.trend?.let {
+                                        Text((if (it >= 0) "▲ +" else "▼ ") + String.format("%.1f", it), fontSize = 11.sp,
+                                            color = if (it >= 0) Color(0xFF34D399) else Color(0xFFF59E0B), fontFamily = FontFamily.Monospace)
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            Text("ревью — это мой взгляд по фото, не приговор. отёк утром — это просто утро.",
+                                fontSize = 10.5.sp, color = Color.White.copy(alpha = 0.42f), fontStyle = FontStyle.Italic)
+                        }
+                    }
+                }
+
+                if (uiState.memes.isNotEmpty()) {
+                    item { SectionLabel("наш лор", Color(0xFF34D399)) }
+                    items(uiState.memes) { m ->
+                        Card {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(m.title, fontSize = 12.5.sp, color = Color.White, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text("×${m.timesUsed}", fontSize = 12.sp, color = Color(0xFF34D399), fontFamily = FontFamily.Monospace)
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun InsightsContent(uiState: InsightsUiState, onSelectTimeframe: (InsightsTimeframe) -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+private fun SectionLabel(text: String, color: Color) {
+    Text(text.uppercase(), fontSize = 10.5.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp, color = color,
+        modifier = Modifier.padding(top = 6.dp, start = 4.dp))
+}
+
+@Composable
+private fun Card(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = Color.White.copy(alpha = 0.055f),
+        border = BorderStroke(1.dp, Brush.linearGradient(listOf(Color.White.copy(alpha = 0.14f), Color.White.copy(alpha = 0.05f)))),
+        shadowElevation = 0.dp,
+        modifier = Modifier.fillMaxWidth()
     ) {
-        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-            InsightsTimeframe.entries.forEachIndexed { index, timeframe ->
-                SegmentedButton(
-                    selected = uiState.timeframe == timeframe,
-                    onClick = { onSelectTimeframe(timeframe) },
-                    shape = SegmentedButtonDefaults.itemShape(index, InsightsTimeframe.entries.size),
-                    colors = SegmentedButtonDefaults.colors(
-                        activeContainerColor = MaterialTheme.colorScheme.primary,
-                        activeContentColor = MaterialTheme.colorScheme.onPrimary,
-                        activeBorderColor = MaterialTheme.colorScheme.primary,
-                    ),
-                ) {
-                    Text(timeframe.label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
-                }
-            }
-        }
-
-        Spacer(Modifier.height(20.dp))
-        SectionLabel(uiState.periodTitle.uppercase(Locale.ROOT))
-        Card {
-            StatRow("Sessions", uiState.sessionCount.formatCount())
-            StatRow("Messages", uiState.totalMessages.formatCount())
-            StatRow("Input Tokens", uiState.totalInputTokens.formatCount())
-            StatRow("Output Tokens", uiState.totalOutputTokens.formatCount())
-            StatRow("Total Tokens", uiState.totalTokens.formatCount())
-            StatRow("Estimated Cost", formatCost(uiState.estimatedCost), showDivider = false)
-        }
-
-        if (uiState.models.isNotEmpty()) {
-            Spacer(Modifier.height(24.dp))
-            SectionLabel("Models")
-            Card {
-                uiState.models.forEachIndexed { index, model ->
-                    ModelRow(model, showDivider = index < uiState.models.lastIndex)
-                }
-            }
-        }
-
-        if (uiState.recentDailyTokens.isNotEmpty()) {
-            Spacer(Modifier.height(24.dp))
-            SectionLabel("Recent Daily Tokens")
-            Card {
-                uiState.recentDailyTokens.forEachIndexed { index, day ->
-                    DailyTokenRow(day, showDivider = index < uiState.recentDailyTokens.lastIndex)
-                }
-            }
-        }
-
-        val peakDay = uiState.peakDay
-        val peakHour = uiState.peakHour
-        if (peakDay != null || peakHour != null) {
-            Spacer(Modifier.height(24.dp))
-            SectionLabel("Activity")
-            Card {
-                peakDay?.let {
-                    StatRow(
-                        "Peak Day",
-                        it.day ?: "--",
-                        trailingText = "${it.sessions ?: 0} sessions",
-                        showDivider = peakHour != null,
+        Box(modifier = Modifier.fillMaxWidth()) {
+            // liquid-glass lensing highlight
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.White.copy(alpha = 0.09f), Color.White.copy(alpha = 0.02f), Color.Transparent)
+                        )
                     )
-                }
-                peakHour?.let {
-                    StatRow(
-                        "Peak Hour",
-                        it.hour?.let { hour -> String.format(Locale.ROOT, "%02d:00", hour) } ?: "--",
-                        trailingText = "${it.sessions ?: 0} sessions",
-                        showDivider = false,
-                    )
-                }
-            }
+            )
+            Column(Modifier.padding(14.dp), content = content)
         }
-
-        if (uiState.topSessions.isNotEmpty()) {
-            Spacer(Modifier.height(24.dp))
-            SectionLabel("Top Sessions")
-            Card {
-                uiState.topSessions.forEachIndexed { index, session ->
-                    TopSessionRow(session, showDivider = index < uiState.topSessions.lastIndex)
-                }
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-        Text(
-            uiState.sourceDescription,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(16.dp))
     }
 }
 
 @Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelLarge,
-        fontWeight = FontWeight.Bold,
-        letterSpacing = 0.5.sp,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(bottom = 8.dp),
+private fun CategoryBar(category: String, count: Int, total: Int, accent: Color, onClick: () -> Unit = {}) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.985f else 1f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
+        label = "categoryBarPress"
     )
-}
-
-@Composable
-private fun Card(content: @Composable () -> Unit) {
-    Column(
+    Surface(
+        shape = RoundedCornerShape(9999.dp),
+        color = Color.White.copy(alpha = 0.05f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(HermexRadii.SettingsCard))
-            .padding(horizontal = 16.dp),
+            .scale(scale)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
     ) {
-        content()
-    }
-}
-
-@Composable
-private fun InsightsDivider() {
-    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-}
-
-@Composable
-private fun StatRow(
-    label: String,
-    value: String,
-    trailingText: String? = null,
-    showDivider: Boolean = true,
-) {
-    Column {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 14.dp),
+            Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(category, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color.White.copy(alpha = 0.88f), modifier = Modifier.width(112.dp))
+            BoxWithConstraints(Modifier.weight(1f).height(6.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.07f))) {
+                Box(Modifier.fillMaxWidth(count.toFloat() / total.coerceAtLeast(1)).height(6.dp).clip(CircleShape)
+                    .background(Brush.horizontalGradient(listOf(accent.copy(alpha = 0.45f), accent))))
             }
-            trailingText?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.align(Alignment.CenterVertically),
-                )
-            }
-        }
-        if (showDivider) {
-            InsightsDivider()
+            Spacer(Modifier.width(10.dp))
+            Text("$count", fontSize = 12.sp, color = Color.White.copy(alpha = 0.65f), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(4.dp))
+            Text("›", fontSize = 14.sp, color = accent.copy(alpha = 0.7f))
         }
     }
 }
-
-@Composable
-private fun ModelRow(model: InsightsModelBreakdown, showDivider: Boolean) {
-    Column {
-        Column(modifier = Modifier.padding(vertical = 12.dp)) {
-            Text(
-                model.model ?: "Unknown model",
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(2.dp))
-            val parts = listOfNotNull(
-                "${(model.totalTokens ?: 0).formatCount()} tokens",
-                "${model.sessions ?: 0} sessions",
-                model.cost?.let { formatCost(it) },
-                model.displayShare?.let { "$it% share" },
-            )
-            Text(
-                parts.joinToString("   "),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        if (showDivider) {
-            InsightsDivider()
-        }
-    }
-}
-
-@Composable
-private fun DailyTokenRow(day: InsightsDailyToken, showDivider: Boolean) {
-    Column {
-        Column(modifier = Modifier.padding(vertical = 12.dp)) {
-            Text(day.date ?: "--", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(2.dp))
-            val parts = listOfNotNull(
-                "${day.totalTokens.formatCount()} tokens",
-                "${day.sessions ?: 0} sessions",
-                day.cost?.let { formatCost(it) },
-            )
-            Text(
-                parts.joinToString("   "),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        if (showDivider) {
-            InsightsDivider()
-        }
-    }
-}
-
-@Composable
-private fun TopSessionRow(session: SessionSummary, showDivider: Boolean) {
-    Column {
-        Column(modifier = Modifier.padding(vertical = 12.dp)) {
-            Text(
-                session.title ?: "Untitled Session",
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(2.dp))
-            val total = (session.inputTokens ?: 0) + (session.outputTokens ?: 0)
-            val parts = listOfNotNull(
-                "${total.formatCount()} tokens",
-                session.estimatedCost?.takeIf { it > 0 }?.let { formatCost(it) },
-            )
-            Text(
-                parts.joinToString("   "),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        if (showDivider) {
-            InsightsDivider()
-        }
-    }
-}
-
-private fun Int.formatCount(): String = String.format(Locale.US, "%,d", this)
-
-private fun formatCost(cost: Double): String = String.format(Locale.US, "$%.4f", cost)

@@ -1,5 +1,7 @@
 package com.hermex.android.profiles
 
+import com.hermex.android.ui.components.EvaModeParticles
+import com.hermex.android.ui.components.EvaHeaderTitle
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Person
@@ -65,20 +68,23 @@ fun ProfilesScreen(
 
     Scaffold(
         modifier = modifier,
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {
                     if (!isPaneMode) {
-                        Text(
-                            "Profiles",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleLarge,
-                        )
+                        EvaHeaderTitle("профили", "кем я бываю")
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = { openDrawer() }) {
-                        Icon(Icons.Filled.Menu, contentDescription = "Open menu")
+                    if (isPaneMode) {
+                        IconButton(onClick = { openDrawer() }) {
+                            Icon(Icons.Filled.Menu, contentDescription = "Open menu")
+                        }
+                    } else {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
                     }
                 },
                 actions = {
@@ -87,7 +93,7 @@ fun ProfilesScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
+                    containerColor = Color.Transparent,
                     titleContentColor = MaterialTheme.colorScheme.onSurface,
                 ),
             )

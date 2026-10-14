@@ -15,6 +15,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -87,8 +88,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hermex.android.core.network.dto.WorkspaceEntry
-import com.hermex.android.ui.theme.HermexColors
+import com.hermex.android.ui.theme.EvaDesignTokens
 import com.hermex.android.ui.theme.HermexRadii
+import com.hermex.android.eva.DualityMode
+import com.hermex.android.eva.EvaConfig
+import com.hermex.android.ui.components.EvaPetalCanvas
+import com.hermex.android.ui.components.evaGlitch
+import com.hermex.android.ui.theme.evaBreathe
+import com.hermex.android.ui.theme.evaSpringPress
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -110,6 +117,7 @@ fun WorkspaceScreen(
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val dualityMode by EvaConfig.dualityMode.collectAsStateWithLifecycle()
     val openFile = uiState.selectedFile
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -154,12 +162,13 @@ fun WorkspaceScreen(
 
     Scaffold(
         modifier = modifier,
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {
                     Column {
                         Text(
-                            openFile?.name ?: "Files",
+                            (openFile?.name ?: "файлы").lowercase(),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             fontWeight = FontWeight.Bold,
@@ -167,7 +176,7 @@ fun WorkspaceScreen(
                         )
                         if (openFile == null) {
                             Text(
-                                text = if (uiState.isAtRoot) "Root" else uiState.currentPath,
+                                text = if (uiState.isAtRoot) "корень" else uiState.currentPath,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
@@ -185,42 +194,49 @@ fun WorkspaceScreen(
                 },
                 actions = {
                     if (openFile == null) {
-                        // Refresh
                         IconButton(onClick = viewModel::refreshDirectory) {
                             Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
                         }
                         IconButton(onClick = viewModel::navigateUp, enabled = !uiState.isAtRoot) {
                             Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Up to parent folder")
                         }
-                        // New file
-                        TextButton(
-                            onClick = viewModel::showCreateFileDialog,
-                            shape = RoundedCornerShape(HermexRadii.Cell),
-                            modifier = Modifier.height(32.dp),
-                        ) {
-                            Text("+ File", style = MaterialTheme.typography.labelSmall)
-                        }
-                        // New folder
-                        TextButton(
-                            onClick = viewModel::showCreateFolderDialog,
-                            shape = RoundedCornerShape(HermexRadii.Cell),
-                            modifier = Modifier.height(32.dp),
-                        ) {
-                            Text("+ Folder", style = MaterialTheme.typography.labelSmall)
-                        }
-                        // Upload
-                        TextButton(
-                            onClick = { uploadLauncher.launch(arrayOf("*/*")) },
-                            enabled = !uiState.isUploading,
-                            shape = RoundedCornerShape(HermexRadii.Cell),
-                            modifier = Modifier.height(32.dp),
-                        ) {
-                            Text("Upload", style = MaterialTheme.typography.labelSmall)
+                        var overflowMenuExpanded by remember { mutableStateOf(false) }
+                        Box {
+                            IconButton(onClick = { overflowMenuExpanded = true }) {
+                                Icon(Icons.Filled.MoreVert, contentDescription = "More actions")
+                            }
+                            DropdownMenu(
+                                expanded = overflowMenuExpanded,
+                                onDismissRequest = { overflowMenuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("+ New File") },
+                                    onClick = {
+                                        overflowMenuExpanded = false
+                                        viewModel.showCreateFileDialog()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("+ New Folder") },
+                                    onClick = {
+                                        overflowMenuExpanded = false
+                                        viewModel.showCreateFolderDialog()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Upload File") },
+                                    onClick = {
+                                        overflowMenuExpanded = false
+                                        uploadLauncher.launch(arrayOf("*/*"))
+                                    },
+                                    enabled = !uiState.isUploading
+                                )
+                            }
                         }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
+                    containerColor = Color.Transparent,
                     titleContentColor = MaterialTheme.colorScheme.onSurface,
                 ),
             )
@@ -229,8 +245,13 @@ fun WorkspaceScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
+                .then(if (dualityMode == DualityMode.YANDERE) Modifier.evaGlitch(triggerKey = Unit) else Modifier)
         ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+            ) {
             if (openFile != null) {
                 FileViewerContent(
                     file = openFile,
@@ -278,6 +299,7 @@ fun WorkspaceScreen(
             }
         }
     }
+        }
 
     // Create file/folder dialog
     uiState.createDialog?.let { dialog ->
@@ -398,7 +420,7 @@ private fun DeleteFileDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !dialog.isDeleting) { Text("Cancel") }
+            TextButton(onClick = onDismiss, enabled = !dialog.isDeleting) { Text("отмена") }
         },
     )
 }
@@ -413,7 +435,7 @@ private fun RenameDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(HermexRadii.Dialog),
-        title = { Text("Rename") },
+        title = { Text("переименовать") },
         text = {
             Column {
                 Text(
@@ -747,7 +769,7 @@ private fun WorkspaceEntryRow(
                             onDismissRequest = { showMenu = false },
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Copy path") },
+                                text = { Text("скопировать путь") },
                                 onClick = {
                                     showMenu = false
                                     onCopyPath()
@@ -1154,20 +1176,32 @@ private fun GitStatusCard(
                 else -> {
                     // Not a git repo or repo with changes
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "Git",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.5.sp,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                        ) {
+                            Text(
+                                text = "GIT",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            )
+                        }
                         Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = "read-only",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
                         if (gitState.isGit) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            ) {
+                                Text(
+                                    text = "read-only",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                )
+                            }
+                            Spacer(Modifier.width(8.dp))
                             Text(
                                 text = gitState.branch ?: "(detached)",
                                 style = MaterialTheme.typography.titleSmall,
@@ -1184,7 +1218,7 @@ private fun GitStatusCard(
                             }
                         } else {
                             Text(
-                                text = "Not a git repository in workspace",
+                                text = "Not a git repository",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -1242,7 +1276,7 @@ private fun GitStatusCard(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Spacer(Modifier.height(4.dp))
-                            val successColor = if (isSystemInDarkTheme()) HermexColors.SuccessDark else HermexColors.SuccessLight
+                            val successColor = EvaDesignTokens.Colors.StatusOnline
                             gitState.files.forEachIndexed { index, file ->
                                 if (index > 0) {
                                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))

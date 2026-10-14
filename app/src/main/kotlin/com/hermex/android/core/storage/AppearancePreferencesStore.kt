@@ -1,5 +1,7 @@
 package com.hermex.android.core.storage
 
+import com.hermex.android.eva.DualityMode
+
 /** Local appearance preferences -- distinct from [ServerStore]/[CookieStore], which persist
  * auth/connection state. See [CookieStore] for why this is plain DataStore rather than
  * EncryptedSharedPreferences (nothing here is sensitive either). Mirrors [ChatPreferencesStore]. */
@@ -10,6 +12,8 @@ interface AppearancePreferencesStore {
     suspend fun setAppIconVariant(variant: AppIconVariant)
     suspend fun loadUserInitials(): String
     suspend fun setUserInitials(initials: String)
+    suspend fun loadDualityMode(): DualityMode
+    suspend fun setDualityMode(mode: DualityMode)
 }
 
 /** Default used wherever no real store is wired in -- mirrors [NoOpCustomHeadersStore]. Always
@@ -21,4 +25,6 @@ object NoOpAppearancePreferencesStore : AppearancePreferencesStore {
     override suspend fun setAppIconVariant(variant: AppIconVariant) = Unit
     override suspend fun loadUserInitials(): String = "BD"
     override suspend fun setUserInitials(initials: String) = Unit
+    override suspend fun loadDualityMode(): DualityMode = DualityMode.SAKURA
+    override suspend fun setDualityMode(mode: DualityMode) = Unit
 }

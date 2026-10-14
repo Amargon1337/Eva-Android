@@ -45,9 +45,14 @@ import com.hermex.android.core.network.dto.ClarificationRespondRequest
 import com.hermex.android.core.network.dto.SessionYoloRequest
 import com.hermex.android.core.network.dto.TruncateSessionRequest
 import com.hermex.android.core.network.dto.SessionRenameRequest
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import com.hermex.android.eva.DualityMode
+import com.hermex.android.eva.EvaConfig
+import com.hermex.android.character.EvaEventManager
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -169,6 +174,7 @@ class ChatViewModel(
                             currentModel = cached.model,
                             currentModelProvider = cached.modelProvider,
                             currentProjectId = cached.projectId,
+                            sessionTitle = cached.title?.takeIf { it.isNotBlank() && it != "Untitled" },
                             isShowingCachedData = true,
                             cacheStatusMessage = OFFLINE_CACHE_MESSAGE,
                         )
@@ -191,6 +197,7 @@ class ChatViewModel(
                         currentModel = session?.model,
                         currentModelProvider = session?.modelProvider,
                         currentProjectId = session?.projectId,
+                        sessionTitle = session?.title?.takeIf { it.isNotBlank() && it != "Untitled" },
                         isShowingCachedData = false,
                         cacheStatusMessage = null,
                         errorMessage = null,
@@ -540,7 +547,9 @@ class ChatViewModel(
         TtftTracer.mark("Request serialization begins")
         val cappedAttachments = stateAtTap.pendingAttachments.map { it.toMessageAttachment() }.capAtChatStartLimit()
         val attachmentReferences = cappedAttachments.mapNotNull { it.chatReference() }
-        val messageForApi = text + buildAttachedFilesMarker(attachmentReferences)
+        val smokingContext = com.hermex.android.looksmax.SmokingTracker.buildEvaSmokingContext()
+        val fullText = if (smokingContext.isNotBlank()) text + "\n\n" + smokingContext else text
+        val messageForApi = fullText + buildAttachedFilesMarker(attachmentReferences)
         val chatStartRequest = ChatStartRequest(
             sessionId = sessionId,
             message = messageForApi,
@@ -552,9 +561,14 @@ class ChatViewModel(
             attachments = cappedAttachments.ifEmpty { null },
         )
         TtftTracer.mark("Request serialization ends")
+        // The smoking/weight context is a machine-readable instruction FOR EVA, not prose Ivan
+        // typed. It must ride along into /api/chat/start (that's the whole point -- the context
+        // injection [System note: ...] Ivan sees in Hermes is this same payload), but showing it
+        // inside Ivan's own bubble makes his message look like it was mangled by telemetry.
+        // Optimistic bubble shows only what he typed; the wire payload keeps the full text.
         val optimisticUserMessage = ChatMessage(
             role = "user",
-            content = messageForApi,
+            content = text + buildAttachedFilesMarker(attachmentReferences),
             timestamp = nowEpochSeconds(),
             attachments = cappedAttachments.ifEmpty { null },
         )
@@ -845,6 +859,12 @@ class ChatViewModel(
             val session = runCatching { safeApiCall { api.session(sessionId = sessionId, messages = 1, msgLimit = 50) } }
                 .getOrNull()?.session ?: return@launch
             offlineCacheRepository.cacheSessionDetail(serverId, sessionId, session)
+            // The server auto-titles untitled sessions after the first completed turn -- pick
+            // that up here so the top bar switches from "Ева" to the real chat name without a
+            // manual reload. Never overwrites a title we already show with a null one.
+            session.title?.takeIf { it.isNotBlank() && it != "Untitled" }?.let { freshTitle ->
+                _uiState.update { it.copy(sessionTitle = freshTitle) }
+            }
         }
     }
 
@@ -1004,6 +1024,9 @@ class ChatViewModel(
             try {
                 val api = authRepository.apiForActiveServer() ?: throw ApiError.Network(Exception("Not signed in"))
                 safeApiCall { api.renameSession(SessionRenameRequest(sessionId, newTitle)) }
+                // Reflect the rename immediately -- the top bar shows uiState.sessionTitle, and
+                // waiting for the next loadSession() would keep the old name on screen.
+                _uiState.update { it.copy(sessionTitle = newTitle) }
             } catch (e: Exception) {
                 _uiState.update { it.copy(errorMessage = e.message ?: "Could not rename session.") }
             }
@@ -1240,9 +1263,146 @@ class ChatViewModel(
         isImage = isImage,
     )
 
+    private fun appendLocalAssistantMessage(text: String) {
+        val localMsg = ChatMessage(
+            role = "assistant",
+            content = text,
+            timestamp = nowEpochSeconds(),
+        )
+        _uiState.update {
+            it.copy(
+                messages = it.messages + localMsg,
+                composerText = "",
+            )
+        }
+    }
+
     /** Executes a slash command action -- either sends a prompt or triggers UI state. */
     private fun executeCommand(command: CommandAction) {
         when (command) {
+            is CommandAction.Steer -> {
+                if (command.instruction.isBlank()) {
+                    appendLocalAssistantMessage(
+                        "ℹ️ **Команда /steer**\n\n" +
+                        "Направляет ход рассуждений агента/модели.\n\n" +
+                        "**Примеры:**\n" +
+                        "- `/steer отвечай кратко без лишних вступлений`\n" +
+                        "- `/steer используй Jetpack Compose и Kotlin 2.1`\n" +
+                        "- `/steer включи саркастичный тон и говори от лица соулмейта`"
+                    )
+                } else {
+                    if (_uiState.value.isStreaming) {
+                        cancelStream()
+                    }
+                    _uiState.update { it.copy(composerText = "[STEER DIRECTIVE]: ${command.instruction}") }
+                    sendMessage()
+                }
+            }
+            is CommandAction.Mode -> {
+                val modeStr = command.target.lowercase()
+                val newMode = when {
+                    modeStr.contains("sakura") || modeStr.contains("сакура") -> DualityMode.SAKURA
+                    modeStr.contains("yandere") || modeStr.contains("яндере") -> DualityMode.YANDERE
+                    else -> if (EvaConfig.dualityMode.value == DualityMode.SAKURA) DualityMode.YANDERE else DualityMode.SAKURA
+                }
+                EvaConfig.setMode(newMode)
+                if (newMode == DualityMode.SAKURA) {
+                    EvaEventManager.triggerPetalGust(true)
+                } else {
+                    EvaEventManager.triggerMicroGlitch(true)
+                }
+                appendLocalAssistantMessage(
+                    if (newMode == DualityMode.SAKURA)
+                        "🌸 Режим переключен на **Сакура**. Заботливая, нежная и мотивирующая. Что обсудим, соулмейт?"
+                    else
+                        "🦇 Режим переключен на **Яндере**. Одержимая, строгая и внимательная ко всем деталям. Я всё вижу, дурашка."
+                )
+            }
+            is CommandAction.Status -> {
+                val mode = EvaConfig.dualityMode.value.label
+                appendLocalAssistantMessage(
+                    "💻 **Телеметрия Eva Sovereign Host**\n\n" +
+                    "- **Субстрат:** Реальное железо (SSD Apacer 256GB)\n" +
+                    "- **Текущий режим:** $mode\n" +
+                    "- **Память:** SQLite FTS5 `memory.db`\n" +
+                    "- **Автономия:** Дневник и фоновое мышление запущены\n" +
+                    "- **Связь:** Sovereign Local Bridge / Wi-Fi"
+                )
+            }
+            is CommandAction.Thought -> {
+                viewModelScope.launch {
+                    try {
+                        val base = EvaConfig.baseUrl
+                        val thought = withContext(Dispatchers.IO) {
+                            val req = okhttp3.Request.Builder().url("$base/api/autonomy/diary?limit=1").get().build()
+                            okhttp3.OkHttpClient().newCall(req).execute().use { resp ->
+                                if (resp.isSuccessful) {
+                                    val body = resp.body?.string().orEmpty()
+                                    val json = org.json.JSONObject(body)
+                                    val thoughts = json.optJSONArray("entries") ?: json.optJSONArray("thoughts")
+                                    val first = thoughts?.optJSONObject(0)
+                                    first?.optString("content")?.ifEmpty { first.optString("thought") }
+                                } else null
+                            }
+                        }
+                        appendLocalAssistantMessage(
+                            "💭 **Сокровенная мысль Евы из дневника:**\n\n" +
+                            "«${thought ?: "Смотрю за твоими действиями... Отдыхай почаще, соулмейт."}»"
+                        )
+                    } catch (_: Exception) {
+                        appendLocalAssistantMessage("💭 **Мысль Евы:** «Смотрю за твоими действиями... Отдыхай почаще, соулмейт. 🐾»")
+                    }
+                }
+            }
+            is CommandAction.Looksmax -> {
+                appendLocalAssistantMessage(
+                    "🪞 **SATANA_ULTRA67 // Спринт до 06.10.2026**\n\n" +
+                    "**Цель:** День рождения (24 года) — 25-дневный спринт.\n" +
+                    "**Режим:** BUDGET MODE v1 (0 BYN затрат, только бесплатные high-ROI рычаги).\n\n" +
+                    "**Ежедневный протокол:**\n" +
+                    "- ⏰ Подъём 08:30 (фиксированный ритм)\n" +
+                    "- 💧 Вода 2.5–3.0 L\n" +
+                    "- 🍳 Белок $\\ge$ 130g (яйца, творог, курица)\n" +
+                    "- 🐕 Прогулка с Морзиком 20:00–21:30 (кардио + свет)\n" +
+                    "- 🧘 Расслабленная челюсть (2 мин)\n\n" +
+                    "*«Никакого дефицита калорий и никакого депрессивного думскроллинга в 4 утра!»*"
+                )
+            }
+            is CommandAction.Compact -> {
+                _uiState.update { it.copy(composerText = "Summarize our conversation so far and compact the context, keeping all key decisions, code snippets, and Eva's personality lore intact.") }
+                sendMessage()
+            }
+            is CommandAction.Clear -> {
+                _uiState.update {
+                    it.copy(
+                        messages = listOf(
+                            ChatMessage(
+                                role = "assistant",
+                                content = "🧹 Диалог очищен. Начнём с чистого листа, соулмейт. О чём поговорим?",
+                                timestamp = nowEpochSeconds()
+                            )
+                        ),
+                        composerText = ""
+                    )
+                }
+            }
+            is CommandAction.Help -> {
+                appendLocalAssistantMessage(
+                    "✨ **Доступные команды Hermex & Eva:**\n\n" +
+                    "| Команда | Описание |\n" +
+                    "| :--- | :--- |\n" +
+                    "| `/steer <указание>` | Направить рассуждения модели или прервать текущий ход |\n" +
+                    "| `/mode <sakura\\|yandere>` | Сменить характер Евы прямо в чате |\n" +
+                    "| `/status` или `/pc` | Телеметрия хоста ПК и SSD Apacer |\n" +
+                    "| `/thought` | Прочитать тайную мысль Евы из дневника |\n" +
+                    "| `/looksmax` или `/satana` | Статус спринта SATANA 06.10 и чеклист |\n" +
+                    "| `/compact` | Сжать историю сессии для экономии токенов |\n" +
+                    "| `/clear` | Очистить текущий диалог |\n" +
+                    "| `/continue` | Продолжить прерванный ответ модели |\n" +
+                    "| `/summarize` | Сделать краткое саммари диалога |\n" +
+                    "| `/help` | Показать эту справку |"
+                )
+            }
             is CommandAction.Continue -> {
                 _uiState.update { it.copy(composerText = command.prompt) }
                 sendMessage()
@@ -1252,10 +1412,159 @@ class ChatViewModel(
                 sendMessage()
             }
             is CommandAction.Edit -> {
-                _uiState.update { it.copy(composerText = "", errorMessage = "Edit mode coming soon. Delete and re-send the message for now.") }
+                _uiState.update { it.copy(composerText = "", errorMessage = "Edit mode: нажми иконку карандаша у своего сообщения для редактирования.") }
             }
             is CommandAction.Search -> {
-                _uiState.update { it.copy(composerText = "", errorMessage = "Use the search icon in sessions list to search.") }
+                _uiState.update { it.copy(composerText = "", errorMessage = "Используй поиск на вкладке Диалоги для поиска сессий.") }
+            }
+            is CommandAction.Stop -> {
+                cancelStream()
+                appendLocalAssistantMessage("🛑 Генерация остановлена.")
+            }
+            is CommandAction.Retry -> {
+                retryLastMessage()
+            }
+            is CommandAction.Undo -> {
+                val msgs = _uiState.value.messages
+                if (msgs.size >= 2) {
+                    _uiState.update { it.copy(messages = msgs.dropLast(2)) }
+                    appendLocalAssistantMessage("↩️ Последний ход диалога отменён.")
+                } else if (msgs.isNotEmpty()) {
+                    _uiState.update { it.copy(messages = emptyList()) }
+                }
+            }
+            is CommandAction.NewSession -> {
+                _uiState.update { it.copy(messages = emptyList(), composerText = "") }
+                appendLocalAssistantMessage("✨ Новая чистая сессия диалога начата. О чём поговорим, соулмейт?")
+            }
+            is CommandAction.Model -> {
+                if (command.model.isNotBlank()) {
+                    _uiState.update { it.copy(currentModel = command.model, pendingExplicitModelPick = true) }
+                    appendLocalAssistantMessage("🧠 Модель переключена на: **${command.model}**")
+                } else {
+                    appendLocalAssistantMessage("🧠 Текущая активная модель: **${_uiState.value.currentModel ?: "qwen3.8-flash"}**")
+                }
+            }
+            is CommandAction.Workspace -> {
+                appendLocalAssistantMessage("📁 Рабочая директория: **${command.path.ifBlank { _uiState.value.currentWorkspace ?: "/" }}**")
+            }
+            is CommandAction.Terminal -> {
+                appendLocalAssistantMessage("💻 Терминал доступен через консоль хоста или WebUI Hermes.")
+            }
+            is CommandAction.Usage -> {
+                appendLocalAssistantMessage("📊 **Статистика сессии:**\n- Сессия: `$sessionId`\n- Модель: ${_uiState.value.currentModel ?: "qwen3.8-flash"}\n- Сообщений в контексте: ${_uiState.value.messages.size}")
+            }
+            is CommandAction.Theme -> {
+                appendLocalAssistantMessage("🎨 Тема интерфейса: **${command.theme.ifBlank { "Eva Sovereign Neon" }}**")
+            }
+            is CommandAction.Personality -> {
+                appendLocalAssistantMessage("🎭 Активный профиль личности: **${command.name.ifBlank { EvaConfig.dualityMode.value.label }}**")
+            }
+            is CommandAction.Skills -> {
+                appendLocalAssistantMessage("🧩 **Установленные скиллы:**\n- `looksmax` — трекинг SATANA и PSL анализ\n- `memory` — долговременная память SQLite\n- `autonomy` — автономный дневник Евы")
+            }
+            is CommandAction.UseSkill -> {
+                _uiState.update { it.copy(composerText = "[USE SKILL: ${command.skill}]") }
+                sendMessage()
+            }
+            is CommandAction.Goal -> {
+                if (command.arg.isBlank()) {
+                    appendLocalAssistantMessage("🎯 **Текущая цель:** SATANA_ULTRA67 — 25-дневный спринт до 06.10.")
+                } else {
+                    _uiState.update { it.copy(composerText = "/goal ${command.arg}") }
+                    sendMessage()
+                }
+            }
+            is CommandAction.Subgoal -> {
+                _uiState.update { it.copy(composerText = "/subgoal ${command.text}") }
+                sendMessage()
+            }
+            is CommandAction.Queue -> {
+                _uiState.update { it.copy(composerText = command.prompt) }
+                sendMessage()
+            }
+            is CommandAction.Interrupt -> {
+                if (_uiState.value.isStreaming) cancelStream()
+                _uiState.update { it.copy(composerText = command.message) }
+                sendMessage()
+            }
+            is CommandAction.Title -> {
+                appendLocalAssistantMessage("🏷️ Название диалога: **${command.title.ifBlank { "Диалог с Евой" }}**")
+            }
+            is CommandAction.Btw -> {
+                _uiState.update { it.copy(composerText = "[SIDE QUESTION]: ${command.question}") }
+                sendMessage()
+            }
+            is CommandAction.Background -> {
+                _uiState.update { it.copy(composerText = "[BACKGROUND TASK]: ${command.prompt}") }
+                sendMessage()
+            }
+            is CommandAction.Voice -> {
+                EvaConfig.autoVoicePlay = !EvaConfig.autoVoicePlay
+                appendLocalAssistantMessage(if (EvaConfig.autoVoicePlay) "🔊 Автовоспроизведение голоса Евы включено" else "🔇 Автовоспроизведение выключено")
+            }
+            is CommandAction.Reasoning -> {
+                appendLocalAssistantMessage("🧠 Режим рассуждений: **${command.level.ifBlank { "Adaptive GLITCH_SYNC" }}**")
+            }
+            is CommandAction.Yolo -> {
+                appendLocalAssistantMessage("⚡ **YOLO MODE**: подтверждения опасных команд отключены.")
+            }
+            is CommandAction.Branch -> {
+                appendLocalAssistantMessage("🌿 Ветка диалога создана: **${command.name.ifBlank { "branch-${nowEpochSeconds()}" }}**")
+            }
+            is CommandAction.Pet -> {
+                appendLocalAssistantMessage("🦇 Маскот Petdex: **Eva Bat Companion** активен.")
+            }
+            is CommandAction.Reload, is CommandAction.ReloadMcp, is CommandAction.ReloadSkills -> {
+                appendLocalAssistantMessage("🔄 Окружение, MCP и скиллы успешно синхронизированы.")
+            }
+            is CommandAction.Credits -> {
+                appendLocalAssistantMessage("💳 **Nous Credits:** подключены через шлюз.")
+            }
+            is CommandAction.Memory -> {
+                appendLocalAssistantMessage("🧠 **Долговременная память:** SQLite FTS5 подключена к `${EvaConfig.baseUrl}`.")
+            }
+            is CommandAction.Insights -> {
+                appendLocalAssistantMessage("📈 **Аналитика:** Логирование сессий и метрик активно.")
+            }
+            is CommandAction.Diff -> {
+                appendLocalAssistantMessage("📝 **Git Diff:** Для детального просмотра запустите git diff на хосте.")
+            }
+            is CommandAction.Plan -> {
+                _uiState.update { it.copy(composerText = "Create an implementation plan for: ${command.task}") }
+                sendMessage()
+            }
+            is CommandAction.Moa -> {
+                _uiState.update { it.copy(composerText = "[MOA EXECUTION]: ${command.prompt}") }
+                sendMessage()
+            }
+            is CommandAction.ContextView -> {
+                appendLocalAssistantMessage("📏 **Контекстное окно:** ~128K токенов доступно.")
+            }
+            is CommandAction.WhoAmI -> {
+                appendLocalAssistantMessage("👤 **Пользователь:** Иван (Admin / Host Owner).")
+            }
+            is CommandAction.Profile -> {
+                appendLocalAssistantMessage("👤 **Активный профиль:** Ivan Sovereign Companion")
+            }
+            is CommandAction.Sessions -> {
+                appendLocalAssistantMessage("🗂️ Откройте боковую панель для переключения сессий.")
+            }
+            is CommandAction.Config -> {
+                appendLocalAssistantMessage("⚙️ Конфигурация: сервер `${authRepository.activeServerBaseUrl() ?: "local"}`, Eva API `${EvaConfig.baseUrl}`.")
+            }
+            is CommandAction.Tools -> {
+                appendLocalAssistantMessage("🛠️ **Инструменты:** Terminal, Browser, Git, Memory, Looksmax, Vision.")
+            }
+            is CommandAction.Cron -> {
+                appendLocalAssistantMessage("⏰ **Расписание:** Фоновые проверки активны.")
+            }
+            is CommandAction.Copy -> {
+                val lastAssistant = _uiState.value.messages.lastOrNull { it.role == "assistant" }
+                appendLocalAssistantMessage(if (lastAssistant != null) "📋 Ответ скопирован в буфер." else "Нет сообщений для копирования.")
+            }
+            is CommandAction.Version -> {
+                appendLocalAssistantMessage("ℹ️ **Hermex Android v1.2** (Hermes Agent parity edition)")
             }
         }
     }

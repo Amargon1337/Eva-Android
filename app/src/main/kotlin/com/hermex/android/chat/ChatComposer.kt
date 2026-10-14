@@ -4,14 +4,13 @@ import android.net.Uri
 import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -22,25 +21,35 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.sp
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.KeyboardVoice
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
+import com.hermex.android.eva.EvaConfig
+import com.hermex.android.ui.theme.EvaDesignTokens
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItem
@@ -63,53 +72,39 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.hermex.android.core.network.dto.ModelCatalogGroup
 import com.hermex.android.core.network.dto.ModelCatalogOption
-import com.hermex.android.core.network.dto.ProfileSummary
 import coil3.compose.SubcomposeAsyncImage
 import com.hermex.android.core.network.dto.fileTypeIcon
 import com.hermex.android.core.util.HermexLog
+import com.hermex.android.character.EvaHaptics
 import com.hermex.android.ui.theme.HermexRadii
 
 /** [ChatComposer]'s callbacks, grouped so adding a future action (slash commands) doesn't widen
- * [ChatComposer]'s own parameter list. */
+ * [ChatComposer]'s own parameter list. Model selection moved to the chat top bar and profile
+ * switching was dropped from the composer entirely (14.09, Ivan's feedback: he never switches
+ * profiles, and the bottom strip duplicated controls he doesn't use). */
 data class ChatComposerActions(
     val onTextChanged: (String) -> Unit,
     val onSend: () -> Unit,
     val onStop: () -> Unit,
-    val onSelectProfile: (String) -> Unit,
-    val onOpenModelPicker: () -> Unit,
-    val onSelectModel: (ModelCatalogOption) -> Unit,
     val onAttachFile: (Uri) -> Unit,
     val onRemoveAttachment: (String) -> Unit,
 )
 
-/** The profile dropdown's own list/selection data -- separate from [ChatComposerState] because
- * it's plain display data, not busy/disabled state. */
-data class ChatComposerProfileSelectorState(
-    val profileOptions: List<ProfileSummary>,
-    val selectedProfileName: String?,
-) {
-    companion object {
-        fun from(uiState: ChatUiState): ChatComposerProfileSelectorState = ChatComposerProfileSelectorState(
-            profileOptions = uiState.profileOptions,
-            selectedProfileName = uiState.selectedProfileName,
-        )
-    }
-}
-
-/** The model dropdown's own list/selection data -- separate from [ChatComposerState] for the
- * same reason as [ChatComposerProfileSelectorState]. */
+/** The model picker's list/selection data -- kept here (chat package) because the sheet UI
+ * itself now lives in the chat top bar, not the composer. */
 data class ChatComposerModelSelectorState(
     val modelCatalogGroups: List<ModelCatalogGroup>,
     val currentModel: String?,
@@ -126,8 +121,8 @@ data class ChatComposerModelSelectorState(
     }
 }
 
-/** The pending-attachment strip's own list data -- separate from [ChatComposerState] for the same
- * reason as [ChatComposerProfileSelectorState]: it's plain display data, not busy/disabled state. */
+/** The pending-attachment strip's own list data -- separate from [ChatComposerState] for the
+ * same reason as the model picker state: it's plain display data, not busy/disabled state. */
 data class ChatComposerAttachmentState(
     val pendingAttachments: List<PendingAttachmentUi>,
 ) {
@@ -153,23 +148,14 @@ private val ComposerMaxWidth = 840.dp
 @Composable
 fun ChatComposer(
     composerState: ChatComposerState,
-    profileSelectorState: ChatComposerProfileSelectorState,
-    modelSelectorState: ChatComposerModelSelectorState,
     attachmentState: ChatComposerAttachmentState,
     actions: ChatComposerActions,
     modifier: Modifier = Modifier,
 ) {
-    // enableEdgeToEdge() (MainActivity) draws the app behind the system navigation bar. The dock's
-    // tonal background is allowed to extend all the way to the physical bottom edge (behind
-    // gesture nav), matching a real bottom dock -- only the interactive content inside is padded
-    // clear of the nav bar via navigationBarsPadding() on the inner Column, not the outer Surface.
-    // Deliberately NOT also adding imePadding(): Scaffold's own default contentWindowInsets
-    // (WindowInsets.safeDrawing, which includes ime) already accounts for the keyboard once, so
-    // stacking an explicit imePadding() on top double-counted the keyboard height and left a large
-    // blank gap above it when the keyboard opened.
-    // Logged only on change, not every recomposition -- lets `adb logcat -s Hermex/Composer`
-    // confirm Scaffold's innerPadding is actually reserving this much space for the transcript
-    // (see ChatScreen investigation notes on composer/content overlap).
+    // Telegram-style single-row composer (14.09, Ivan's request): [+] [input field] [mic/send].
+    // The old bottom chip strip (Attach/Default/Model/Voice) and the quick-prompt ribbon are
+    // gone -- model selection lives in the chat top bar now, attachments hang off the "+",
+    // and voice input is the trailing button when the field is empty.
     val context = LocalContext.current
     var lastLoggedHeightPx by remember { mutableStateOf(-1) }
     var showCommandPicker by remember { mutableStateOf(false) }
@@ -217,14 +203,6 @@ fun ChatComposer(
             voiceHandler.stopListening()
         }
     }
-    // Capped and centered rather than left plain fillMaxWidth(), so the dock doesn't stretch to an
-    // awkward, hard-to-type-in width on a large tablet's wide-layout right pane. On any phone-scale
-    // width (compact or the adaptive shell's ~400dp right pane) the cap never binds, so this Box is
-    // a no-op there -- outer width stays fillMaxWidth() exactly as before, just with the (possibly
-    // narrower) dock centered inside it.
-    // Deliberately no fillMaxWidth() before widthIn(max=...) below: fillMaxWidth() pins both min
-    // and max width to the full available space, so a subsequent widthIn(max) below that pinned
-    // min gets silently overridden back up to full width, defeating the cap on wide panes.
     Box(modifier = modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
         SnackbarHost(hostState = snackbarHostState)
         Surface(
@@ -237,14 +215,20 @@ fun ChatComposer(
                         HermexLog.d("Composer", "measured height=${heightPx}px")
                     }
                 },
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            shape = RoundedCornerShape(topStart = HermexRadii.SettingsCard, topEnd = HermexRadii.SettingsCard),
-            tonalElevation = 4.dp,
+            color = Color.Transparent,
+            border = null,
+            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+            tonalElevation = 0.dp,
         ) {
-            Column(modifier = Modifier.navigationBarsPadding()) {
-                // Hairline separating the dock from the message list above -- the app-wide
-                // substitute for wrapping the whole (now asymmetrically-rounded) shape in a border.
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), thickness = 1.dp)
+            // Rounded-display safe bottom padding (14.09): on gesture-nav phones like the Redmi
+            // Note 13 the nav bar inset can report 0 when hints are hidden, letting the dock's
+            // content physically clip against the rounded bottom corners. navigationBarsPadding
+            // alone isn't enough -- take the max of it and a hard 12dp floor.
+            Column(
+                modifier = Modifier
+                    .navigationBarsPadding()
+                    .padding(bottom = 12.dp)
+            ) {
 
                 if (attachmentState.pendingAttachments.isNotEmpty()) {
                     PendingAttachmentStrip(
@@ -257,17 +241,51 @@ fun ChatComposer(
                     val suggestions = CommandRegistry.filter(commandQuery)
                     if (suggestions.isNotEmpty()) {
                         Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(HermexRadii.Accessory),
-                            shadowElevation = 4.dp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color.White.copy(alpha = 0.09f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                            shadowElevation = 8.dp,
                         ) {
-                            Column {
-                                suggestions.forEach { suggestion ->
+                            LazyColumn(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 240.dp)
+                            ) {
+                                items(suggestions) { suggestion ->
                                     ListItem(
-                                        headlineContent = { Text(suggestion.command) },
-                                        supportingContent = { Text(suggestion.description) },
+                                        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+                                        headlineContent = {
+                                            Text(
+                                                text = suggestion.command,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        },
+                                        supportingContent = {
+                                            Text(
+                                                text = suggestion.description,
+                                                color = Color.White.copy(alpha = 0.70f),
+                                                fontSize = 12.sp
+                                            )
+                                        },
                                         leadingContent = {
-                                            Icon(suggestion.icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        imageVector = suggestion.icon,
+                                                        contentDescription = null,
+                                                        tint = MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
+                                            }
                                         },
                                         modifier = Modifier.clickable {
                                             actions.onTextChanged(suggestion.command + " ")
@@ -280,128 +298,180 @@ fun ChatComposer(
                     }
                 }
 
-                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedTextField(
-                            value = composerState.text,
-                            onValueChange = { newValue ->
-                                actions.onTextChanged(newValue)
-                                if (newValue.startsWith("/")) {
-                                    showCommandPicker = true
-                                    commandQuery = newValue
-                                } else {
-                                    showCommandPicker = false
-                                }
-                            },
-                            modifier = Modifier.weight(1f),
-                            placeholder = { Text("Message Hermex…") },
-                            enabled = composerState.isTextFieldEnabled,
-                            maxLines = 5,
-                            shape = RoundedCornerShape(HermexRadii.Composer),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                                unfocusedBorderColor = Color.Transparent,
-                                focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
-                            ),
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        // Fixed-size slot for the trailing action -- Stop/Send (both IconButton-
-                        // family, 48dp by default) and the bare sending spinner previously had no
-                        // shared box, so the control visibly jumped size as the composer moved
-                        // between states.
-                        Box(
-                            modifier = Modifier.size(48.dp),
-                            contentAlignment = Alignment.Center,
+                val primaryAccent = MaterialTheme.colorScheme.primary
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                ) {
+                    // Telegram-style capsule container
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp),
+                        shape = RoundedCornerShape(24.dp),
+                        color = Color.White.copy(alpha = 0.07f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            when {
-                                composerState.showStopButton -> {
-                                    val haptic = LocalHapticFeedback.current
-                                    FilledIconButton(
-                                        onClick = {
-                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            actions.onStop()
-                                        },
-                                        colors = IconButtonDefaults.filledIconButtonColors(
-                                            containerColor = Color.White,
-                                            contentColor = Color.Black,
-                                        ),
-                                        modifier = Modifier.size(48.dp),
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.Close,
-                                            contentDescription = "Stop",
-                                            modifier = Modifier.size(24.dp),
-                                        )
+                            // Left inside capsule: Menu button (replaces emoji/stickers, opens slash commands)
+                            IconButton(
+                                onClick = {
+                                    showCommandPicker = !showCommandPicker
+                                    if (showCommandPicker && !commandQuery.startsWith("/")) {
+                                        commandQuery = "/"
                                     }
-                                }
-                                composerState.showSendingSpinner -> CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                                else -> FilledIconButton(onClick = actions.onSend, enabled = composerState.canSend) {
-                                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
-                                }
+                                },
+                                modifier = Modifier.size(40.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Menu,
+                                    contentDescription = "Команды",
+                                    tint = if (showCommandPicker) primaryAccent else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                    modifier = Modifier.size(22.dp),
+                                )
                             }
+
+                            // Center inside capsule: BasicTextField
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 6.dp, vertical = 8.dp),
+                                contentAlignment = Alignment.CenterStart,
+                            ) {
+                                if (composerState.text.isEmpty()) {
+                                    Text(
+                                        text = "позвать Еву…",
+                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+                                            fontSize = 15.sp,
+                                        ),
+                                    )
+                                }
+                                BasicTextField(
+                                    value = composerState.text,
+                                    onValueChange = { newValue ->
+                                        actions.onTextChanged(newValue)
+                                        if (newValue.startsWith("/") && !newValue.contains(" ")) {
+                                            showCommandPicker = true
+                                            commandQuery = newValue
+                                        } else if (!newValue.startsWith("/") && showCommandPicker && commandQuery.startsWith("/")) {
+                                            showCommandPicker = false
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    enabled = composerState.isTextFieldEnabled,
+                                    maxLines = 5,
+                                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontSize = 15.sp,
+                                    ),
+                                    cursorBrush = SolidColor(primaryAccent),
+                                )
+                            }
+
+                            // Right inside capsule: Paperclip icon button (Telegram style)
+                            AttachFileIconButton(
+                                enabled = composerState.isAttachButtonEnabled,
+                                isUploading = composerState.isUploadingAttachment,
+                                onAttachFile = actions.onAttachFile,
+                            )
                         }
                     }
-                    Spacer(Modifier.height(8.dp))
-                    // The bottom control strip -- Hermex-styled chips for Attach/Profile/Model,
-                    // each mapping to a real existing action, scrollable so it never clips or wraps
-                    // awkwardly on narrow phones.
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+
+                    Spacer(Modifier.width(8.dp))
+
+                    // Right outside capsule: Circular action button (Mic / Send / Stop / Spinner)
+                    Box(
+                        modifier = Modifier.size(48.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        AttachFileButton(
-                            enabled = composerState.isAttachButtonEnabled,
-                            isUploading = composerState.isUploadingAttachment,
-                            onAttachFile = actions.onAttachFile,
-                        )
-                        ProfileSelectorButton(
-                            profileOptions = profileSelectorState.profileOptions,
-                            selectedProfileName = profileSelectorState.selectedProfileName,
-                            isSwitchingProfile = composerState.isProfileSelectorLoading,
-                            onSelectProfile = actions.onSelectProfile,
-                        )
-                        ModelSelectorButton(
-                            modelCatalogGroups = modelSelectorState.modelCatalogGroups,
-                            currentModel = modelSelectorState.currentModel,
-                            currentModelProvider = modelSelectorState.currentModelProvider,
-                            isLoadingModelCatalog = modelSelectorState.isLoadingModelCatalog,
-                            isUpdatingComposerConfiguration = composerState.isModelSelectorLoading,
-                            onOpenModelPicker = actions.onOpenModelPicker,
-                            onSelectModel = actions.onSelectModel,
-                        )
-                        IconButton(
-                            onClick = {
-                                if (isRecording) {
-                                    voiceHandler.stopListening()
-                                    isRecording = false
-                                } else {
-                                    val permissionState = ContextCompat.checkSelfPermission(context, recordAudioPermission)
-                                    if (permissionState == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                                        voiceHandler.startListening(
-                                            onResult = { text ->
-                                                actions.onTextChanged(composerState.text + text)
-                                                isRecording = false
-                                            },
-                                            onError = {
-                                                isRecording = false
-                                            },
-                                        )
-                                        isRecording = true
-                                    } else {
-                                        permissionLauncher.launch(recordAudioPermission)
-                                    }
+                        when {
+                            composerState.showStopButton -> {
+                                val haptic = LocalHapticFeedback.current
+                                FilledIconButton(
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        actions.onStop()
+                                    },
+                                    shape = CircleShape,
+                                    colors = IconButtonDefaults.filledIconButtonColors(
+                                        containerColor = Color.White,
+                                        contentColor = Color.Black,
+                                    ),
+                                    modifier = Modifier.size(48.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Close,
+                                        contentDescription = "Stop",
+                                        modifier = Modifier.size(24.dp),
+                                    )
                                 }
-                            },
-                        ) {
-                            Icon(
-                                if (isRecording) Icons.Filled.Mic else Icons.Filled.KeyboardVoice,
-                                contentDescription = if (isRecording) "Stop recording" else "Voice input",
-                                tint = if (isRecording) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                            }
+                            composerState.showSendingSpinner -> CircularProgressIndicator(
+                                modifier = Modifier.size(26.dp),
+                                strokeWidth = 2.5.dp,
+                                color = primaryAccent,
                             )
+                            composerState.text.isNotBlank() -> FilledIconButton(
+                                onClick = {
+                                    EvaHaptics.click(context)
+                                    actions.onSend()
+                                },
+                                shape = CircleShape,
+                                enabled = composerState.canSend,
+                                colors = IconButtonDefaults.filledIconButtonColors(
+                                    containerColor = primaryAccent,
+                                    contentColor = Color.White,
+                                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                                    disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+                                ),
+                                modifier = Modifier.size(48.dp),
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Send,
+                                    contentDescription = "Send",
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
+                            else -> FilledIconButton(
+                                onClick = {
+                                    if (isRecording) {
+                                        voiceHandler.stopListening()
+                                        isRecording = false
+                                    } else {
+                                        val permissionCheck = ContextCompat.checkSelfPermission(context, recordAudioPermission)
+                                        if (permissionCheck == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                            voiceHandler.startListening(
+                                                onResult = { text ->
+                                                    actions.onTextChanged(composerState.text + text)
+                                                    isRecording = false
+                                                },
+                                                onError = { isRecording = false },
+                                            )
+                                            isRecording = true
+                                        } else {
+                                            permissionLauncher.launch(recordAudioPermission)
+                                        }
+                                    }
+                                },
+                                shape = CircleShape,
+                                colors = IconButtonDefaults.filledIconButtonColors(
+                                    containerColor = if (isRecording) MaterialTheme.colorScheme.error else primaryAccent,
+                                    contentColor = Color.White,
+                                ),
+                                modifier = Modifier.size(48.dp),
+                            ) {
+                                Icon(
+                                    if (isRecording) Icons.Filled.Close else Icons.Filled.Mic,
+                                    contentDescription = if (isRecording) "Stop listening" else "Voice input",
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
                         }
                     }
                 }
@@ -410,67 +480,9 @@ fun ChatComposer(
     }
 }
 
-/** Shared visual container for the composer's bottom control strip -- a small tonal pill with an
- * icon and an optional label, so Attach/Profile/Model all read as one family of "Hermex chips"
- * instead of bare icons. [onClick] is required: every chip here must map to a real, already-
- * existing action -- a chip that looks tappable but does nothing is worse than no chip at all. */
+/** Telegram-style paperclip attachment button inside the composer capsule. */
 @Composable
-private fun ComposerChip(
-    icon: ImageVector,
-    label: String?,
-    contentDescription: String,
-    onClick: () -> Unit,
-    enabled: Boolean = true,
-    isLoading: Boolean = false,
-) {
-    val contentColor = if (enabled) {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-    }
-    val chipContent: @Composable RowScope.() -> Unit = {
-        if (isLoading) {
-            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-        } else {
-            Icon(
-                icon,
-                contentDescription = if (label == null) contentDescription else null,
-                modifier = Modifier.size(15.dp),
-                tint = contentColor,
-            )
-        }
-        if (label != null) {
-            Spacer(Modifier.width(5.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = contentColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = 96.dp),
-            )
-        }
-    }
-    Surface(
-        modifier = Modifier.clickable(enabled = enabled && !isLoading, onClick = onClick),
-        shape = RoundedCornerShape(HermexRadii.Accessory),
-        color = MaterialTheme.colorScheme.surfaceContainer,
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = if (label != null) 10.dp else 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            content = chipContent,
-        )
-    }
-}
-
-/** No paperclip icon ships in `material-icons-core` (only `material-icons-extended` has one, and
- * adding that dependency purely for one icon isn't worth it) -- `Add` is the closest already-
- * available icon and is what the MVP spec explicitly allows as a fallback. Opens the system
- * document picker (Storage Access Framework), so no storage permission is needed: the picker
- * itself grants this app read access to whatever the user selects. */
-@Composable
-private fun AttachFileButton(
+private fun AttachFileIconButton(
     enabled: Boolean,
     isUploading: Boolean,
     onAttachFile: (Uri) -> Unit,
@@ -479,14 +491,27 @@ private fun AttachFileButton(
         uri?.let(onAttachFile)
     }
 
-    ComposerChip(
-        icon = Icons.Filled.Add,
-        label = null,
-        contentDescription = "Attach file",
-        enabled = enabled,
-        isLoading = isUploading,
-        onClick = { launcher.launch(arrayOf("*/*")) },
-    )
+    Box(contentAlignment = Alignment.Center) {
+        IconButton(
+            onClick = { if (enabled && !isUploading) launcher.launch(arrayOf("*/*")) },
+            enabled = enabled && !isUploading,
+            modifier = Modifier.size(40.dp),
+        ) {
+            if (isUploading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                Icon(
+                    Icons.Filled.AttachFile,
+                    contentDescription = "Attach file",
+                    tint = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -586,107 +611,278 @@ private fun PendingAttachmentStrip(
     }
 }
 
+/** Model picker bottom sheet -- 14.09: moved from the composer's bottom chip into the chat top
+ * bar (Ivan's request: model selection belongs at the top, like the model name subtitle). The
+ * sheet UI itself is unchanged; it's now invoked from [ChatScreen]'s top-bar model chip. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ProfileSelectorButton(
-    profileOptions: List<ProfileSummary>,
-    selectedProfileName: String?,
-    isSwitchingProfile: Boolean,
-    onSelectProfile: (String) -> Unit,
+fun ModelPickerSheet(
+    modelSelectorState: ChatComposerModelSelectorState,
+    isUpdatingComposerConfiguration: Boolean,
+    onOpenModelPicker: () -> Unit,
+    onSelectModel: (ModelCatalogOption) -> Unit,
 ) {
-    var menuExpanded by remember { mutableStateOf(false) }
-    val selectedLabel = profileOptions.firstOrNull { it.normalizedName == selectedProfileName }?.displayName
+    var showSheet by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    Box {
-        ComposerChip(
-            icon = Icons.Filled.Person,
-            label = selectedLabel,
-            contentDescription = "Profile: ${selectedProfileName ?: "none"}",
-            enabled = profileOptions.isNotEmpty(),
-            isLoading = isSwitchingProfile,
-            onClick = { menuExpanded = true },
-        )
-        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-            profileOptions.forEach { profile ->
-                val name = profile.normalizedName ?: return@forEach
-                DropdownMenuItem(
-                    text = { Text(profile.displayName) },
-                    trailingIcon = {
-                        if (name == selectedProfileName) {
-                            Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+    // The visible trigger: a compact tonal chip showing the current model. When the catalog is
+    // empty and loading, it degrades to a plain spinner chip rather than showing a blank label.
+    ComposerModelChip(
+        currentModel = modelSelectorState.currentModel,
+        isLoading = isUpdatingComposerConfiguration,
+        onClick = {
+            searchQuery = ""
+            showSheet = true
+            onOpenModelPicker()
+        },
+    )
+
+    if (showSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showSheet = false },
+            sheetState = sheetState,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 6.dp,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            dragHandle = {
+                Surface(
+                    modifier = Modifier.padding(vertical = 12.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(2.dp)
+                ) {
+                    Box(modifier = Modifier.size(width = 36.dp, height = 4.dp))
+                }
+            }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .navigationBarsPadding()
+                    .padding(bottom = 16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text(
+                            text = "Выбор нейросети",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = if (modelSelectorState.currentModel != null) "Активна: ${modelSelectorState.currentModel}" else "Выберите модель для диалога",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    val totalCount = modelSelectorState.modelCatalogGroups.sumOf { it.models.size }
+                    if (totalCount > 0) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                        ) {
+                            Text(
+                                text = "$totalCount доступно",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                fontWeight = FontWeight.SemiBold
+                            )
                         }
+                    }
+                }
+
+                Spacer(Modifier.height(14.dp))
+
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Поиск модели или провайдера...", style = MaterialTheme.typography.bodyMedium) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    singleLine = true,
+                    leadingIcon = {
+                        Icon(
+                            Icons.Filled.Search,
+                            contentDescription = "Search",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
                     },
-                    onClick = {
-                        menuExpanded = false
-                        onSelectProfile(name)
-                    },
+                    trailingIcon = if (searchQuery.isNotEmpty()) {
+                        {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Filled.Close, contentDescription = "Clear", modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    } else null,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        unfocusedBorderColor = Color.Transparent,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                    ),
                 )
+
+                Spacer(Modifier.height(12.dp))
+
+                val filteredGroups = remember(modelSelectorState.modelCatalogGroups, searchQuery) {
+                    if (searchQuery.isBlank()) {
+                        modelSelectorState.modelCatalogGroups
+                    } else {
+                        modelSelectorState.modelCatalogGroups.mapNotNull { group ->
+                            val matching = group.models.filter {
+                                it.displayName.contains(searchQuery, ignoreCase = true) ||
+                                it.id.contains(searchQuery, ignoreCase = true) ||
+                                (it.providerId ?: "").contains(searchQuery, ignoreCase = true)
+                            }
+                            if (matching.isNotEmpty()) group.copy(models = matching) else null
+                        }
+                    }
+                }
+
+                when {
+                    modelSelectorState.isLoadingModelCatalog && modelSelectorState.modelCatalogGroups.isEmpty() -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
+                        }
+                    }
+                    filteredGroups.isEmpty() -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(120.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (searchQuery.isBlank()) "Нет доступных моделей" else "Ничего не найдено",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    else -> {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 380.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            filteredGroups.forEach { group ->
+                                item(key = "header_${group.name}") {
+                                    Text(
+                                        text = group.name.uppercase(),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+                                    )
+                                }
+                                items(group.models, key = { "${it.providerId}_${it.id}_${it.displayName}" }) { option ->
+                                    val isSelected = option.matchesSelection(modelSelectorState.currentModel, modelSelectorState.currentModelProvider)
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isSelected) {
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                        } else {
+                                            MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f)
+                                        },
+                                        border = if (isSelected) {
+                                            BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+                                        } else null,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                showSheet = false
+                                                onSelectModel(option)
+                                            }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = option.displayName,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                )
+                                                option.providerId?.let { provider ->
+                                                    Text(
+                                                        text = provider,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            }
+                                            if (isSelected) {
+                                                Icon(
+                                                    Icons.Filled.Check,
+                                                    contentDescription = "Selected",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
 }
 
+/** The compact chip shown in the chat top bar that opens [ModelPickerSheet]. */
 @Composable
-private fun ModelSelectorButton(
-    modelCatalogGroups: List<ModelCatalogGroup>,
+private fun ComposerModelChip(
     currentModel: String?,
-    currentModelProvider: String?,
-    isLoadingModelCatalog: Boolean,
-    isUpdatingComposerConfiguration: Boolean,
-    onOpenModelPicker: () -> Unit,
-    onSelectModel: (ModelCatalogOption) -> Unit,
+    isLoading: Boolean,
+    onClick: () -> Unit,
 ) {
-    var menuExpanded by remember { mutableStateOf(false) }
-
-    Box {
-        ComposerChip(
-            icon = Icons.Filled.Settings,
-            label = currentModel,
-            contentDescription = "Model: ${currentModel ?: "none"}",
-            isLoading = isUpdatingComposerConfiguration,
-            onClick = {
-                menuExpanded = true
-                onOpenModelPicker()
-            },
-        )
-        DropdownMenu(
-            expanded = menuExpanded,
-            onDismissRequest = { menuExpanded = false },
-            modifier = Modifier.heightIn(max = 400.dp),
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(HermexRadii.Accessory),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            when {
-                isLoadingModelCatalog && modelCatalogGroups.isEmpty() -> DropdownMenuItem(
-                    text = { Text("Loading models...") },
-                    onClick = {},
-                    enabled = false,
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+            } else {
+                Icon(
+                    Icons.Filled.Settings,
+                    contentDescription = null,
+                    modifier = Modifier.size(15.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                modelCatalogGroups.isEmpty() -> DropdownMenuItem(
-                    text = { Text("No models available") },
-                    onClick = {},
-                    enabled = false,
-                )
-                else -> modelCatalogGroups.forEach { group ->
-                    Text(
-                        text = group.name,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                    )
-                    group.models.forEach { option ->
-                        DropdownMenuItem(
-                            text = { Text(option.displayName) },
-                            trailingIcon = {
-                                if (option.matchesSelection(currentModel, currentModelProvider)) {
-                                    Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                }
-                            },
-                            onClick = {
-                                menuExpanded = false
-                                onSelectModel(option)
-                            },
-                        )
-                    }
-                }
             }
+            Spacer(Modifier.width(5.dp))
+            Text(
+                text = currentModel ?: "модель",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 96.dp),
+            )
         }
     }
 }

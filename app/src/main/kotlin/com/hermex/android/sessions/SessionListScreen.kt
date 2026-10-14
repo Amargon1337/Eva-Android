@@ -9,7 +9,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import com.hermex.android.ui.components.EvaPetalCanvas
+import com.hermex.android.ui.components.evaGlitch
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
+import com.hermex.android.eva.DualityMode
+import com.hermex.android.eva.EvaConfig
+import com.hermex.android.ui.components.EvaPetalCanvas
+import com.hermex.android.ui.components.evaGlitch
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -79,6 +87,8 @@ import com.hermex.android.ui.theme.HermexErrorBanner
 import com.hermex.android.ui.theme.HermexRadii
 import com.hermex.android.ui.theme.HermexSpacing
 import com.hermex.android.ui.theme.toComposeColor
+import com.hermex.android.ui.components.LivePulseDot
+import com.hermex.android.ui.theme.EvaDesignTokens
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -90,7 +100,7 @@ import java.util.Locale
  * pane. Deliberately nav-graph-agnostic -- callers (e.g. HermexNavGraph) map their own route
  * constants onto this rather than this file knowing route strings.
  */
-enum class SessionListNavItem { TASKS, SKILLS, MEMORY, INSIGHTS, PROFILES, PROJECTS }
+enum class SessionListNavItem { TASKS, SKILLS, MEMORY, INSIGHTS, PROFILES, PROJECTS, LOOKSMAX, TOKENS, DIARY, TELEMETRY }
 
 /** Clears the floating New Chat button at the bottom of the list, independent of the
  * system navigation bar inset (added separately via `navigationBarsPadding()` where this is used). */
@@ -121,6 +131,7 @@ fun SessionListScreen(
     selectedSessionId: String? = null,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val dualityMode by EvaConfig.dualityMode.collectAsStateWithLifecycle()
     var isSearchActive by remember { mutableStateOf(false) }
     val searchFocusRequester = remember { FocusRequester() }
     val openDrawer = LocalHermexDrawerOpener.current
@@ -131,7 +142,8 @@ fun SessionListScreen(
 
     Scaffold(
         modifier = modifier,
-            topBar = {
+        containerColor = Color.Transparent,
+        topBar = {
                 TopAppBar(
                     title = {
                         if (isSearchActive) {
@@ -141,7 +153,7 @@ fun SessionListScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .focusRequester(searchFocusRequester),
-                                placeholder = { Text("Search sessions") },
+                                placeholder = { Text("искать по диалогам…") },
                                 leadingIcon = {
                                     Icon(
                                         Icons.Filled.Search,
@@ -163,11 +175,11 @@ fun SessionListScreen(
                                 IconButton(onClick = { openDrawer() }) {
                                     Icon(
                                         Icons.Filled.Menu,
-                                        contentDescription = "Open menu",
+                                        contentDescription = "Меню",
                                     )
                                 }
                                 Text(
-                                    text = "Hermex",
+                                    text = "чат",
                                     style = MaterialTheme.typography.headlineLarge,
                                     fontWeight = FontWeight.Bold,
                                     color = uiState.headerLogoColor.toComposeColor(),
@@ -190,15 +202,15 @@ fun SessionListScreen(
                                 Icon(Icons.Filled.Refresh, contentDescription = "Refresh sessions")
                             }
                             IconButton(onClick = { isSearchActive = true }) {
-                                Icon(Icons.Filled.Search, contentDescription = "Search sessions")
+                                Icon(Icons.Filled.Search, contentDescription = "Поиск")
                             }
                             IconButton(onClick = onOpenSettings) {
-                                Icon(Icons.Filled.AccountCircle, contentDescription = "Settings")
+                                Icon(Icons.Filled.AccountCircle, contentDescription = "Настройки")
                             }
                         }
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background,
+                        containerColor = Color.Transparent,
                         titleContentColor = MaterialTheme.colorScheme.onSurface,
                     ),
                 )
@@ -220,7 +232,7 @@ fun SessionListScreen(
                             FloatingActionButton(
                                 onClick = onNewChat,
                                 shape = RoundedCornerShape(HermexRadii.Dialog),
-                                containerColor = Color.White,
+                                containerColor = com.hermex.android.ui.components.evaAccent(),
                                 contentColor = Color.Black,
                             ) {
                                 if (uiState.isCreatingSession) {
@@ -237,7 +249,7 @@ fun SessionListScreen(
                             ExtendedFloatingActionButton(
                                 onClick = onNewChat,
                                 shape = RoundedCornerShape(HermexRadii.Dialog),
-                                containerColor = Color.White,
+                                containerColor = com.hermex.android.ui.components.evaAccent(),
                                 contentColor = Color.Black,
                                 icon = {
                                     if (uiState.isCreatingSession) {
@@ -250,7 +262,7 @@ fun SessionListScreen(
                                         Icon(Icons.Filled.Edit, contentDescription = null)
                                     }
                                 },
-                                text = { Text("New Chat", fontWeight = FontWeight.SemiBold) },
+                                text = { Text("новый чат", fontWeight = FontWeight.SemiBold) },
                             )
                         }
                     }
@@ -283,6 +295,7 @@ fun SessionListBody(
     selectedSessionId: String? = null,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val dualityMode by EvaConfig.dualityMode.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var pendingRenameSession by remember { mutableStateOf<SessionSummary?>(null) }
     var pendingDeleteSession by remember { mutableStateOf<SessionSummary?>(null) }
@@ -360,13 +373,21 @@ fun SessionListBody(
                     }
                 }
             }
+            item(key = "eva-sessions-bento-hero") {
+                EvaSessionsBentoHero(
+                    sessionCount = uiState.sessions.size,
+                    activeStreamCount = uiState.sessions.count { it.activeStreamId != null },
+                    dualityMode = dualityMode,
+                    onToggleMode = { EvaConfig.toggleMode() },
+                )
+            }
             item(key = "sessions-header") {
                 Text(
                     text = "Sessions",
                     style = MaterialTheme.typography.labelSmall,
                     letterSpacing = 0.5.sp,
-                    color = if (isSystemInDarkTheme()) HermexColors.DarkTertiaryLabel else HermexColors.LightTertiaryLabel,
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = HermexSpacing.LG, bottom = HermexSpacing.SM),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = HermexSpacing.MD, bottom = HermexSpacing.SM),
                 )
             }
             when {
@@ -395,7 +416,7 @@ fun SessionListBody(
                             modifier = Modifier.size(32.dp),
                         )
                         Spacer(Modifier.height(12.dp))
-                        Text("No sessions yet", style = MaterialTheme.typography.titleMedium)
+                        Text("пока пусто. скажи мне что-нибудь", style = MaterialTheme.typography.titleMedium)
                         Text(
                             "Tap + to start one.",
                             style = MaterialTheme.typography.bodyMedium,
@@ -549,5 +570,105 @@ private fun sessionDateBucket(epochSeconds: Double): String {
         today -> "TODAY"
         today.minusDays(1) -> "YESTERDAY"
         else -> date.format(DateTimeFormatter.ofPattern("MMM d", Locale.getDefault()))
+    }
+}
+
+@Composable
+private fun EvaSessionsBentoHero(
+    sessionCount: Int,
+    activeStreamCount: Int,
+    dualityMode: DualityMode,
+    onToggleMode: () -> Unit,
+) {
+    val isSakura = dualityMode == DualityMode.SAKURA
+    val accentColor = if (isSakura) EvaDesignTokens.Sakura.Pink else EvaDesignTokens.Yandere.Crimson
+    val borderColor = if (isSakura) EvaDesignTokens.Sakura.Border else EvaDesignTokens.Yandere.Wine.copy(alpha = 0.45f)
+    val containerBg = if (isSakura) {
+        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.50f)
+    } else {
+        EvaDesignTokens.Yandere.Surface.copy(alpha = 0.60f)
+    }
+
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = containerBg,
+        border = BorderStroke(EvaDesignTokens.Hairline, borderColor),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .clickable(onClick = onToggleMode)
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    LivePulseDot(color = accentColor, size = 8.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = if (isSakura) "🌸 Ева · Сакура" else "🦇 Ева · Яндере",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = accentColor,
+                    )
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = if (isSakura) "Нежная забота · SQLite память" else "Строгий фокус · Glitch sync",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "$sessionCount",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = "сессий",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                if (activeStreamCount > 0) {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFF10B981).copy(alpha = 0.15f),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "$activeStreamCount",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF10B981),
+                            )
+                            Text(
+                                text = "стрим",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF10B981),
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }

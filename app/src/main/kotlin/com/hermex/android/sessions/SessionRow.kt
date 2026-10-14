@@ -1,5 +1,6 @@
 package com.hermex.android.sessions
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -27,11 +28,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hermex.android.core.network.dto.SessionSummary
+import com.hermex.android.ui.components.LivePulseDot
 import com.hermex.android.ui.theme.HermexColors
-import com.hermex.android.ui.theme.HermexRadii
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+import com.hermex.android.ui.theme.EvaDesignTokens
 
 @Composable
 fun SessionRow(
@@ -41,24 +44,32 @@ fun SessionRow(
     isSelected: Boolean = false,
     isNested: Boolean = false,
 ) {
-    val paddingStart = if (isNested) 40.dp else 0.dp
-    val streamingColor = if (isSystemInDarkTheme()) HermexColors.SuccessDark else HermexColors.SuccessLight
-
-    val mutedLabel = if (isSystemInDarkTheme()) HermexColors.DarkTertiaryLabel else HermexColors.LightTertiaryLabel
+    val paddingStart = if (isNested) 36.dp else 0.dp
+    val streamingColor = EvaDesignTokens.Colors.StatusOnline
+    val mutedLabel = MaterialTheme.colorScheme.onSurfaceVariant
 
     Surface(
         modifier = modifier.padding(start = paddingStart),
-        shape = RoundedCornerShape(HermexRadii.Cell),
-        // Selected state (wide-layout left pane only) stays quiet: a soft primary tint over the
-        // existing low-contrast background, no border/elevation change.
+        shape = RoundedCornerShape(18.dp),
         color = if (isSelected) {
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
         } else {
-            MaterialTheme.colorScheme.surfaceContainerLow
+            MaterialTheme.colorScheme.surfaceContainer
         },
+        border = if (isSelected) {
+            BorderStroke(EvaDesignTokens.Hairline, MaterialTheme.colorScheme.primary.copy(alpha = 0.50f))
+        } else {
+            BorderStroke(EvaDesignTokens.Hairline, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.40f))
+        }
     ) {
         ListItem(
             colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+            leadingContent = {
+                com.hermex.android.ui.components.EvaInitialAvatar(
+                    text = session.title?.takeIf { it.isNotBlank() } ?: "?",
+                    size = 38.dp,
+                )
+            },
             headlineContent = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (session.pinned == true) {
@@ -72,22 +83,22 @@ fun SessionRow(
                     }
                     if (isNested) {
                         Surface(
-                            shape = RoundedCornerShape(4.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
                         ) {
                             Text(
-                                text = "Subagent",
+                                text = "субагент",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             )
                         }
-                        Spacer(Modifier.width(4.dp))
+                        Spacer(Modifier.width(6.dp))
                     }
                     Text(
-                        text = session.title?.takeIf { it.isNotBlank() } ?: "Untitled",
-                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Unspecified,
+                        text = session.title?.takeIf { it.isNotBlank() } ?: "без названия",
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -95,15 +106,36 @@ fun SessionRow(
                 }
             },
             supportingContent = {
-                val subtitle = listOfNotNull(session.model, session.workspace).joinToString(" · ")
-                if (subtitle.isNotEmpty()) {
-                    Text(
-                        text = subtitle,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = mutedLabel,
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(top = 2.dp)
+                ) {
+                    session.model?.let { model ->
+                        val shortModel = model.split("/").lastOrNull() ?: model
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                        ) {
+                            Text(
+                                text = shortModel,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    session.workspace?.let { ws ->
+                        Text(
+                            text = ws,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = mutedLabel,
+                        )
+                    }
                 }
             },
             trailingContent = {
@@ -118,15 +150,15 @@ fun SessionRow(
                     if (session.activeStreamId != null) {
                         Spacer(Modifier.width(4.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(6.dp)
-                                    .background(streamingColor, CircleShape),
+                            LivePulseDot(
+                                color = streamingColor,
+                                size = 6.dp
                             )
-                            Spacer(Modifier.width(4.dp))
+                            Spacer(Modifier.width(6.dp))
                             Text(
-                                if (session.isStreaming == true) "Live" else "Streaming",
+                                if (session.isStreaming == true) "живой" else "пишет",
                                 style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
                                 color = streamingColor,
                             )
                         }
@@ -143,10 +175,10 @@ internal fun relativeTimeText(epochSeconds: Double): String {
     val nowSeconds = System.currentTimeMillis() / 1000.0
     val diffSeconds = (nowSeconds - epochSeconds).coerceAtLeast(0.0)
     return when {
-        diffSeconds < 60 -> "Just now"
-        diffSeconds < 3600 -> "${(diffSeconds / 60).toInt()}m ago"
-        diffSeconds < 86_400 -> "${(diffSeconds / 3600).toInt()}h ago"
-        diffSeconds < 604_800 -> "${(diffSeconds / 86_400).toInt()}d ago"
+        diffSeconds < 60 -> "сейчас"
+        diffSeconds < 3600 -> "${(diffSeconds / 60).toInt()} мин"
+        diffSeconds < 86_400 -> "${(diffSeconds / 3600).toInt()} ч"
+        diffSeconds < 604_800 -> "${(diffSeconds / 86_400).toInt()} дн"
         else -> SimpleDateFormat("MMM d", Locale.getDefault()).format(Date((epochSeconds * 1000).toLong()))
     }
 }

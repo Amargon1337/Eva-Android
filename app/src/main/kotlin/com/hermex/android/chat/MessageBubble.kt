@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -46,7 +48,21 @@ import com.hermex.android.core.network.dto.MessageAttachment
 import com.hermex.android.core.network.dto.attachmentsForDisplay
 import com.hermex.android.core.network.dto.fileTypeIcon
 import com.hermex.android.core.network.dto.stripAttachedFilesMarker
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.hermex.android.character.EvaEventManager
+import com.hermex.android.ui.components.evaGlitch
+import com.hermex.android.eva.DualityMode
+import com.hermex.android.eva.EvaConfig
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import com.hermex.android.ui.components.EvaAvatarView
+import com.hermex.android.ui.components.ExpressivePill
+import com.hermex.android.ui.components.LivePulseDot
 import com.hermex.android.chat.AttachmentFileOpener
+import com.hermex.android.ui.theme.EvaDesignTokens
 import com.hermex.android.ui.theme.HermexRadii
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -73,7 +89,7 @@ fun MessageBubble(
     onRegenerate: (() -> Unit)? = null,
 ) {
     val isUser = message.role == "user"
-    val displayContent = stripAttachedFilesMarker(message.content)
+    val displayContent = stripHabitContext(stripAttachedFilesMarker(message.content))
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     var showImageViewer by remember { mutableStateOf<String?>(null) }
@@ -85,7 +101,7 @@ fun MessageBubble(
         },
     )
     if (isUser) {
-        Box(modifier = modifier.fillMaxWidth().padding(start = 32.dp)) {
+        Box(modifier = modifier.fillMaxWidth().padding(start = 36.dp)) {
             Column(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
@@ -99,27 +115,36 @@ fun MessageBubble(
                     serverBaseUrl = serverBaseUrl,
                     onOpenImage = { showImageViewer = it },
                 )
-                Box(
+                val dualityMode = EvaConfig.dualityMode.collectAsStateWithLifecycle().value
+                val isSakuraMode = dualityMode == DualityMode.SAKURA
+                Surface(
+                    shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 4.dp),
+                    color = if (isSakuraMode) Color(0xFF281335).copy(alpha = 0.90f) else Color(0xFF240A15).copy(alpha = 0.92f),
+                    border = BorderStroke(
+                        1.dp,
+                        if (isSakuraMode) Brush.horizontalGradient(listOf(Color(0xFFE879F9).copy(alpha = 0.5f), Color(0xFFF472B6).copy(alpha = 0.3f)))
+                        else Brush.horizontalGradient(listOf(Color(0xFFE11D48).copy(alpha = 0.5f), Color(0xFF9F1239).copy(alpha = 0.3f)))
+                    ),
                     modifier = Modifier
-                        .background(
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            shape = RoundedCornerShape(HermexRadii.Bubble),
-                        )
-                        // Long-press to copy -- a simple, discoverable single action rather than a
-                        // full context menu, matching the scope of this pass (see AGENTS.md/v0.3.0
-                        // spec).
                         .then(copyOnLongClick)
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                        .shadow(
+                            elevation = 4.dp,
+                            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 4.dp),
+                            ambientColor = if (isSakuraMode) Color(0xFFF472B6).copy(alpha = 0.25f) else Color(0xFFE11D48).copy(alpha = 0.3f)
+                        )
+                        .padding(bottom = 2.dp),
                 ) {
-                    MarkdownText(
-                        markdown = displayContent.orEmpty(),
-                        textColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
+                    Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                        MarkdownText(
+                            markdown = displayContent.orEmpty(),
+                            textColor = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
                 }
                 if (message.effectiveTimestamp != null || onEdit != null) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(top = 3.dp, end = 4.dp),
+                        modifier = Modifier.padding(top = 2.dp, end = 4.dp),
                     ) {
                         onEdit?.let { edit ->
                             IconButton(onClick = edit, modifier = Modifier.size(20.dp)) {
@@ -127,7 +152,7 @@ fun MessageBubble(
                                     Icons.Filled.Edit,
                                     contentDescription = "Edit message",
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(14.dp),
+                                    modifier = Modifier.size(13.dp),
                                 )
                             }
                             Spacer(Modifier.width(2.dp))
@@ -136,7 +161,7 @@ fun MessageBubble(
                             Text(
                                 text = messageTimeText(timestamp),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                             )
                         }
                     }
@@ -144,12 +169,39 @@ fun MessageBubble(
             }
         }
     } else {
+        val dualityMode by EvaConfig.dualityMode.collectAsStateWithLifecycle()
+        val isSakura = dualityMode == DualityMode.SAKURA
+        val glitchKey by EvaEventManager.glitchKey.collectAsStateWithLifecycle()
         Column(
             modifier = modifier
                 .fillMaxWidth()
                 .then(copyOnLongClick)
-                .padding(end = 48.dp, top = 2.dp, bottom = 2.dp),
+                .evaGlitch(triggerKey = glitchKey, enabled = !isSakura)
+                .padding(end = 24.dp, top = 4.dp, bottom = 4.dp),
         ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 6.dp, start = 2.dp)
+            ) {
+                EvaAvatarView(
+                    dualityMode = dualityMode,
+                    size = 28.dp,
+                    hasGlow = true
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = if (isSakura) "Ева 🌸" else "Ева 🦇",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isSakura) EvaDesignTokens.Sakura.Pink else EvaDesignTokens.Yandere.Crimson,
+                )
+                Spacer(Modifier.width(6.dp))
+                ExpressivePill(
+                    text = if (isSakura) "сакура" else "яндере",
+                    accentColor = if (isSakura) EvaDesignTokens.Sakura.Pink else EvaDesignTokens.Yandere.Crimson,
+                )
+            }
+
             MessageAttachments(
                 message = message,
                 context = context,
@@ -157,37 +209,93 @@ fun MessageBubble(
                 serverBaseUrl = serverBaseUrl,
                 onOpenImage = { showImageViewer = it },
             )
-            MarkdownText(
-                markdown = displayContent.orEmpty(),
-                textColor = MaterialTheme.colorScheme.onSurface,
-            )
+            Surface(
+                shape = RoundedCornerShape(topStart = 4.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 20.dp),
+                color = if (isSakura) Color(0xFF140822).copy(alpha = 0.85f) else Color(0xFF0F0412).copy(alpha = 0.88f),
+                border = BorderStroke(
+                    1.2.dp,
+                    if (isSakura) Brush.linearGradient(listOf(Color(0xFFFF71D4).copy(alpha = 0.50f), Color(0xFFC084FC).copy(alpha = 0.30f)))
+                    else Brush.linearGradient(listOf(Color(0xFFE11D48).copy(alpha = 0.55f), Color(0xFF9F1239).copy(alpha = 0.30f)))
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(
+                        elevation = 6.dp,
+                        shape = RoundedCornerShape(topStart = 4.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 20.dp),
+                        ambientColor = if (isSakura) Color(0xFFFF71D4).copy(alpha = 0.25f) else Color(0xFFE11D48).copy(alpha = 0.30f),
+                        spotColor = if (isSakura) Color(0xFFC084FC).copy(alpha = 0.35f) else Color(0xFF9F1239).copy(alpha = 0.40f)
+                    ),
+            ) {
+                Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    MarkdownText(
+                        markdown = displayContent.orEmpty(),
+                        textColor = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
             if (message.effectiveTimestamp != null || onRegenerate != null) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(top = 3.dp),
+                    modifier = Modifier.padding(top = 3.dp, start = 4.dp),
                 ) {
                     message.effectiveTimestamp?.let { timestamp ->
                         Text(
                             text = messageTimeText(timestamp),
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
                         )
                     }
                     onRegenerate?.let { regenerate ->
-                        Spacer(Modifier.width(2.dp))
+                        Spacer(Modifier.width(4.dp))
                         IconButton(onClick = regenerate, modifier = Modifier.size(20.dp)) {
                             Icon(
                                 Icons.Filled.Refresh,
                                 contentDescription = "Regenerate response",
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(14.dp),
+                                modifier = Modifier.size(13.dp),
                             )
+                        }
+                    }
+                    val messageText = displayContent.orEmpty()
+                    if (messageText.isNotBlank()) {
+                        Spacer(Modifier.width(6.dp))
+                        val isPlayingThis = com.hermex.android.media.EvaAudioPlayer.isPlaying &&
+                            com.hermex.android.media.EvaAudioPlayer.currentPlayingText == messageText
+                        val voiceAccent = if (isSakura) EvaDesignTokens.Sakura.Pink else EvaDesignTokens.Yandere.Crimson
+                        Surface(
+                            shape = RoundedCornerShape(9999.dp),
+                            color = if (isPlayingThis) voiceAccent.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceContainerHighest,
+                            border = BorderStroke(EvaDesignTokens.Hairline, if (isPlayingThis) voiceAccent.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                            modifier = Modifier.clickable { com.hermex.android.media.EvaAudioPlayer.play(messageText) }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Filled.VolumeUp,
+                                    contentDescription = "Play Eva Voice",
+                                    tint = if (isPlayingThis) voiceAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(13.dp),
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = if (isPlayingThis) {
+                                        if (isSakura) "Говорит… 🐾" else "Шепчет… 🦇"
+                                    } else {
+                                        if (isSakura) "▶ Голос Евы 🐾" else "▶ Голос Евы 🦇"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isPlayingThis) voiceAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
             }
         }
     }
+
 
     // Full-screen image viewer
     showImageViewer?.let { url ->
@@ -202,7 +310,7 @@ fun MessageBubble(
  * timestamp -- distinct from the session list's relative "Xh ago", which serves a different
  * purpose (recency at a glance) rather than pinpointing when a specific message was sent. */
 private fun messageTimeText(epochSeconds: Double): String =
-    SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date((epochSeconds * 1000).toLong()))
+    SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date((epochSeconds * 1000).toLong()))
 
 /** Attachment indicators precede the message text, matching the upload preview and making it
  * immediately clear which turn an image belonged to when a historical conversation reloads. */
@@ -318,15 +426,88 @@ fun StreamingBubble(
     text: String,
     modifier: Modifier = Modifier,
 ) {
-    Box(
+    val dualityMode by EvaConfig.dualityMode.collectAsStateWithLifecycle()
+    val isSakura = dualityMode == DualityMode.SAKURA
+    val glitchKey by EvaEventManager.glitchKey.collectAsStateWithLifecycle()
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(end = 48.dp, top = 2.dp, bottom = 2.dp),
+            .then(
+                if (!isSakura) Modifier.evaGlitch(triggerKey = glitchKey, enabled = true)
+                else Modifier
+            )
+            .padding(end = 28.dp, top = 4.dp, bottom = 4.dp),
     ) {
-        Text(
-            text = text,
-            color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(bottom = 6.dp, start = 2.dp)
+        ) {
+            EvaAvatarView(
+                dualityMode = dualityMode,
+                size = 28.dp,
+                hasGlow = true,
+                isStreaming = true
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = if (isSakura) "Ева 🌸" else "Ева 🦇",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (isSakura) EvaDesignTokens.Sakura.Pink else EvaDesignTokens.Yandere.Crimson,
+            )
+            Spacer(Modifier.width(6.dp))
+            LivePulseDot(
+                color = if (isSakura) EvaDesignTokens.Sakura.Pink else EvaDesignTokens.Yandere.Crimson,
+                size = 8.dp
+            )
+        }
+        Surface(
+            shape = RoundedCornerShape(topStart = 4.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 20.dp),
+            color = if (isSakura) Color(0xFF140822).copy(alpha = 0.85f) else Color(0xFF0F0412).copy(alpha = 0.88f),
+            border = BorderStroke(
+                1.2.dp,
+                if (isSakura) Brush.linearGradient(listOf(Color(0xFFFF71D4).copy(alpha = 0.50f), Color(0xFFC084FC).copy(alpha = 0.30f)))
+                else Brush.linearGradient(listOf(Color(0xFFE11D48).copy(alpha = 0.55f), Color(0xFF9F1239).copy(alpha = 0.30f)))
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(
+                    elevation = 6.dp,
+                    shape = RoundedCornerShape(topStart = 4.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 20.dp),
+                    ambientColor = if (isSakura) Color(0xFFFF71D4).copy(alpha = 0.25f) else Color(0xFFE11D48).copy(alpha = 0.30f),
+                    spotColor = if (isSakura) Color(0xFFC084FC).copy(alpha = 0.35f) else Color(0xFF9F1239).copy(alpha = 0.40f)
+                ),
+        ) {
+            Box(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                Column {
+                    MarkdownText(
+                        markdown = text,
+                        textColor = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        LivePulseDot(color = if (isSakura) EvaDesignTokens.Sakura.Pink else EvaDesignTokens.Yandere.Crimson, size = 6.dp)
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "Поток мысли...",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+            }
+        }
     }
 }
+
+private val HIDDEN_CONTEXT_BLOCK = Regex(
+    "\\n*\\[(Контекст привычек Ивана|Workspace::v1|STEER DIRECTIVE)[^\\]]*\\]",
+    RegexOption.DOT_MATCHES_ALL,
+)
+
+fun stripHabitContext(content: String?): String? {
+    if (content == null) return null
+    return content.replace(HIDDEN_CONTEXT_BLOCK, "").trim()
+}
+
+

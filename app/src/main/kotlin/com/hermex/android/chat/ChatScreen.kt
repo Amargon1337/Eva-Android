@@ -3,6 +3,7 @@ package com.hermex.android.chat
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
@@ -66,6 +68,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.hermex.android.core.notifications.HermexNotificationRoutes
@@ -77,6 +80,22 @@ import com.hermex.android.sessions.MoveToProjectDialog
 import com.hermex.android.sessions.RenameSessionDialog
 import com.hermex.android.ui.theme.HermexErrorBanner
 import com.hermex.android.ui.theme.HermexRadii
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.background
+import com.hermex.android.character.EvaEventManager
+import com.hermex.android.character.EvaHaptics
+import com.hermex.android.eva.DualityMode
+import com.hermex.android.eva.EvaConfig
+import com.hermex.android.ui.components.EvaAvatarView
+import com.hermex.android.ui.components.EvaPetalCanvas
+import com.hermex.android.ui.components.ExpressivePill
+import com.hermex.android.ui.components.LivePulseDot
+import com.hermex.android.ui.components.evaGlitch
+import com.hermex.android.ui.theme.evaBreathe
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -102,6 +121,10 @@ fun ChatScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val openDrawer = LocalHermexDrawerOpener.current
     val context = LocalContext.current
+    val dualityMode by EvaConfig.dualityMode.collectAsStateWithLifecycle()
+    val isSakura = dualityMode == DualityMode.SAKURA
+    val glitchKey by EvaEventManager.glitchKey.collectAsStateWithLifecycle()
+    val primaryAccent = MaterialTheme.colorScheme.primary
     var showSessionMenu by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -139,74 +162,165 @@ fun ChatScreen(
         )
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        topBar = {
-            TopAppBar(
-                title = {
-                    if (!isPaneMode) {
-                        Text(
-                            "Chat",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleLarge,
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .evaGlitch(triggerKey = glitchKey, enabled = !isSakura)
+    ) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = Color.Transparent,
+            topBar = {
+                TopAppBar(
+                    title = {
+                        if (!isPaneMode) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            ) {
+                                EvaAvatarView(
+                                    dualityMode = dualityMode,
+                                    size = 38.dp,
+                                    hasGlow = true,
+                                    hasLiveDot = true,
+                                    isStreaming = uiState.isStreaming || uiState.isSending,
+                                    enableSpeechBubble = true
+                                )
+
+                                Spacer(Modifier.width(10.dp))
+
+                                Column {
+                                    Text(
+                                        text = uiState.sessionTitle ?: "Ева",
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Spacer(Modifier.height(2.dp))
+                                    if (uiState.isStreaming || uiState.isSending) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            LivePulseDot(color = primaryAccent, size = 6.dp)
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(
+                                                text = "Печатает...",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = primaryAccent,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    } else {
+                                        // Subtitle = active model (Ivan's request 14.09: chat name
+                                        // on top, model right below it). Falls back to the old
+                                        // persona line only while the model is still loading.
+                                        Text(
+                                            text = uiState.currentModel ?: (if (isSakura) "🌸 Соулмейт" else "🦇 Одержимая"),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            EvaHaptics.click(context)
+                            onBack()
+                        }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Назад",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    },
+                    actions = {
+                        // Model picker chip (14.09): model selection moved from the composer's
+                        // bottom strip into the top bar, right where the model name subtitle lives.
+                        ModelPickerSheet(
+                            modelSelectorState = ChatComposerModelSelectorState.from(uiState),
+                            isUpdatingComposerConfiguration = uiState.isUpdatingComposerConfiguration,
+                            onOpenModelPicker = viewModel::refreshModelCatalogForPickerOpen,
+                            onSelectModel = viewModel::selectComposerModel
                         )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = { openDrawer() }) {
-                        Icon(Icons.Filled.Menu, contentDescription = "Open menu")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = onOpenWorkspace) {
-                        Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Files")
-                    }
-                    IconButton(onClick = viewModel::loadSession) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
-                    }
-                    Box {
-                        IconButton(onClick = { showSessionMenu = true }) {
-                            Icon(Icons.Filled.MoreVert, contentDescription = "More options")
+                        ExpressivePill(
+                            text = dualityMode.badge,
+                            accentColor = primaryAccent,
+                            onClick = {
+                                EvaHaptics.whisperTick(context)
+                                EvaConfig.toggleMode()
+                                if (!isSakura) {
+                                    EvaEventManager.triggerPetalGust(true)
+                                } else {
+                                    EvaEventManager.triggerMicroGlitch(true)
+                                }
+                            }
+                        )
+                        Box {
+                            IconButton(onClick = {
+                                EvaHaptics.click(context)
+                                showSessionMenu = true
+                            }) {
+                                Icon(Icons.Filled.MoreVert, contentDescription = "More options")
+                            }
+                            DropdownMenu(expanded = showSessionMenu, onDismissRequest = { showSessionMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Файлы сессии") },
+                                    onClick = {
+                                        showSessionMenu = false
+                                        onOpenWorkspace()
+                                    },
+                                    leadingIcon = { Icon(Icons.AutoMirrored.Filled.List, null) },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Обновить") },
+                                    onClick = {
+                                        showSessionMenu = false
+                                        viewModel.loadSession()
+                                    },
+                                    leadingIcon = { Icon(Icons.Filled.Refresh, null) },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Rename") },
+                                    onClick = { showSessionMenu = false; showRenameDialog = true },
+                                    leadingIcon = { Icon(Icons.Filled.Edit, null) },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Move to Project") },
+                                    onClick = {
+                                        showSessionMenu = false
+                                        showMoveDialog = true
+                                        viewModel.loadProjects()
+                                    },
+                                    leadingIcon = { Icon(Icons.Filled.Folder, null) },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Share") },
+                                    onClick = {
+                                        showSessionMenu = false
+                                        sessionId?.let { chatShareSession(context, it, sessionTitle ?: "Session") }
+                                    },
+                                    leadingIcon = { Icon(Icons.Filled.Share, null) },
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                                    onClick = { showSessionMenu = false; showDeleteDialog = true },
+                                    leadingIcon = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) },
+                                )
+                            }
                         }
-                        DropdownMenu(expanded = showSessionMenu, onDismissRequest = { showSessionMenu = false }) {
-                            DropdownMenuItem(
-                                text = { Text("Rename") },
-                                onClick = { showSessionMenu = false; showRenameDialog = true },
-                                leadingIcon = { Icon(Icons.Filled.Edit, null) },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Move to Project") },
-                                onClick = {
-                                    showSessionMenu = false
-                                    showMoveDialog = true
-                                    viewModel.loadProjects()
-                                },
-                                leadingIcon = { Icon(Icons.Filled.Folder, null) },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Share") },
-                                onClick = {
-                                    showSessionMenu = false
-                                    sessionId?.let { chatShareSession(context, it, sessionTitle ?: "Session") }
-                                },
-                                leadingIcon = { Icon(Icons.Filled.Share, null) },
-                            )
-                            HorizontalDivider()
-                            DropdownMenuItem(
-                                text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
-                                onClick = { showSessionMenu = false; showDeleteDialog = true },
-                                leadingIcon = { Icon(Icons.Filled.Delete, null, tint = MaterialTheme.colorScheme.error) },
-                            )
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                ),
-            )
-        },
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.background,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
+                )
+            },
         bottomBar = {
             uiState.showRetryHint?.let { hint ->
                 Text(
@@ -218,8 +332,6 @@ fun ChatScreen(
             }
             ChatComposer(
                 composerState = ChatComposerState.from(uiState),
-                profileSelectorState = ChatComposerProfileSelectorState.from(uiState),
-                modelSelectorState = ChatComposerModelSelectorState.from(uiState),
                 attachmentState = ChatComposerAttachmentState.from(uiState),
                 actions = ChatComposerActions(
                     onTextChanged = viewModel::onComposerTextChanged,
@@ -228,9 +340,6 @@ fun ChatScreen(
                     // re-arm the same trace instead of reusing stale timing state.
                     onSend = viewModel::sendMessage,
                     onStop = viewModel::cancelStream,
-                    onSelectProfile = viewModel::selectProfile,
-                    onOpenModelPicker = viewModel::refreshModelCatalogForPickerOpen,
-                    onSelectModel = viewModel::selectComposerModel,
                     onAttachFile = viewModel::uploadAttachment,
                     onRemoveAttachment = viewModel::removePendingAttachment,
                 ),
@@ -279,6 +388,11 @@ fun ChatScreen(
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
+                } else if (uiState.messages.isEmpty() && !uiState.isStreaming && uiState.streamingText.isEmpty()) {
+                    EvaChatEmptyHeroState(
+                        dualityMode = dualityMode,
+                        isStreaming = uiState.isStreaming,
+                    )
                 } else {
                     val listState = rememberLazyListState()
                     val totalItems = uiState.messages.size + uiState.activeToolCalls.size +
@@ -405,15 +519,28 @@ fun ChatScreen(
                         // would desync local state from the server's.
                         val canMutateHistory = !uiState.isSending && !uiState.isStreaming
                         uiState.messages.forEachIndexed { index, message ->
-                            toolCallsByAnchor[index]?.forEach { toolCall ->
-                                item(key = toolCall.stableId) {
-                                    ToolCallCard(toolCall, initiallyExpanded = uiState.expandToolCallsByDefault)
+                            // Empty assistant turns (no text AND no reasoning) rendered as blank
+                            // bubbles -- that's the "mysterious empty blocks" from the 14.09
+                            // feedback. An assistant message that only carried a tool-call
+                            // payload has nothing to show. Tool-role messages are NOT skipped:
+                            // they map to timeline cards below, not bubbles.
+                            val isEmptyAssistantBubble = message.role != "user" &&
+                                message.role != "tool" &&
+                                message.content.isNullOrBlank() &&
+                                message.reasoning.isNullOrBlank() &&
+                                message.attachments.isNullOrEmpty()
+                            if (isEmptyAssistantBubble) return@forEachIndexed
+                            toolCallsByAnchor[index]?.let { calls ->
+                                if (calls.isNotEmpty()) {
+                                    item(key = "timeline-anchor-$index") {
+                                        AgentActivityTimeline(calls, initiallyExpanded = uiState.expandToolCallsByDefault)
+                                    }
                                 }
                             }
                             val historicalToolCall = message.toHistoricalToolCallUi()
                             item(key = message.stableId) {
                                 if (historicalToolCall != null) {
-                                    ToolCallCard(historicalToolCall, initiallyExpanded = uiState.expandToolCallsByDefault)
+                                    AgentActivityTimeline(listOf(historicalToolCall), initiallyExpanded = uiState.expandToolCallsByDefault)
                                 } else {
                                     MessageBubble(
                                         message = message,
@@ -438,9 +565,11 @@ fun ChatScreen(
                         }
                         // The current, not-yet-finalized turn's tool calls: anchored at the index
                         // the eventual finalized reply will occupy, i.e. messages.size right now.
-                        toolCallsByAnchor[uiState.messages.size]?.forEach { toolCall ->
-                            item(key = toolCall.stableId) {
-                                ToolCallCard(toolCall, initiallyExpanded = uiState.expandToolCallsByDefault)
+                        toolCallsByAnchor[uiState.messages.size]?.let { activeCalls ->
+                            if (activeCalls.isNotEmpty()) {
+                                item(key = "active-tool-timeline") {
+                                    AgentActivityTimeline(activeCalls, initiallyExpanded = true)
+                                }
                             }
                         }
                         if (uiState.streamingText.isNotEmpty()) {

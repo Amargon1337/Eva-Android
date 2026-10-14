@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -29,11 +30,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.hermex.android.ui.theme.HermexRadii
 
-/** [name]/[preview]/status only in this MVP -- no raw args display (see API_CONTRACT.md scope).
- * Collapsed by default (matching [ReasoningBlock]): the status icon and name stay visible so the
- * user can always tell a tool ran, but [preview]/[durationSeconds] are hidden until tapped.
- * Styled as a first-class Hermex surface (bordered, rounded via the shared [HermexRadii.Cell]
- * token) to match the app-wide card language rather than a bare colored background. */
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import com.hermex.android.ui.components.ExpressivePill
+import com.hermex.android.ui.components.LivePulseDot
+
+/** Expressive Bento card for tool calls with squircle container and animated disclosure. */
 @Composable
 fun ToolCallCard(
     toolCall: ToolCallUi,
@@ -46,72 +49,88 @@ fun ToolCallCard(
         modifier = modifier
             .fillMaxWidth()
             .clickable { expanded = !expanded },
-        shape = RoundedCornerShape(HermexRadii.Cell),
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.65f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)),
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            when {
-                !toolCall.isComplete -> CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                toolCall.isError -> Icon(
-                    Icons.Filled.Warning,
-                    contentDescription = "Failed",
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(16.dp),
-                )
-                else -> Icon(
-                    Icons.Filled.Check,
-                    contentDescription = "Completed",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp),
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                when {
+                    !toolCall.isComplete -> LivePulseDot(color = MaterialTheme.colorScheme.primary, size = 10.dp)
+                    toolCall.isError -> Icon(
+                        Icons.Filled.Warning,
+                        contentDescription = "Failed",
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    else -> Icon(
+                        Icons.Filled.Check,
+                        contentDescription = "Completed",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+
+                Spacer(Modifier.width(10.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "⚡ " + (toolCall.name?.takeIf { it.isNotBlank() } ?: "Tool call"),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        toolCall.durationSeconds?.let { duration ->
+                            Spacer(Modifier.width(8.dp))
+                            ExpressivePill(
+                                text = "%.1fs".format(duration),
+                                accentColor = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                }
+
+                Icon(
+                    imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                    contentDescription = if (expanded) "Свернуть" else "Развернуть",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
-            Column(modifier = Modifier.padding(start = 10.dp)) {
-                Text(
-                    text = toolCall.name?.takeIf { it.isNotBlank() } ?: "Tool call",
-                    style = MaterialTheme.typography.labelLarge,
-                )
-                if (expanded) {
-                    toolCall.preview?.takeIf { it.isNotBlank() }?.let { preview ->
-                        Text(
-                            text = preview,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    toolCall.durationSeconds?.let { duration ->
-                        Text(
-                            text = "%.1fs".format(duration),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    toolCall.rawArgs?.let { args ->
-                        Spacer(Modifier.padding(top = 6.dp))
-                        Text(
-                            text = "Arguments",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        Spacer(Modifier.padding(top = 2.dp))
-                        Text(
-                            text = args,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+            if (expanded) {
+                toolCall.preview?.takeIf { it.isNotBlank() }?.let { preview ->
+                    Spacer(Modifier.padding(top = 8.dp))
+                    Text(
+                        text = preview,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                toolCall.rawArgs?.let { args ->
+                    Spacer(Modifier.padding(top = 8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                text = "Аргументы",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.padding(top = 2.dp))
+                            Text(
+                                text = args,
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
-
-            Icon(
-                imageVector = if (expanded) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
-                contentDescription = if (expanded) "Collapse" else "Expand",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
+

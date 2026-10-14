@@ -45,4 +45,16 @@ class CommandRegistryTest {
     fun filter_returnsEmptyForNonSlash() {
         assertTrue(CommandRegistry.filter("edit").isEmpty())
     }
+
+    @Test
+    fun matchCommand_returnsDesktopHermesCommands() {
+        assertTrue(CommandRegistry.matchCommand("/model") is CommandAction.Model)
+        assertTrue(CommandRegistry.matchCommand("/workspace") is CommandAction.Workspace)
+        assertTrue(CommandRegistry.matchCommand("/terminal") is CommandAction.Terminal)
+        assertTrue(CommandRegistry.matchCommand("/new") is CommandAction.NewSession)
+        assertTrue(CommandRegistry.matchCommand("/usage") is CommandAction.Usage)
+        assertTrue(CommandRegistry.matchCommand("/stop") is CommandAction.Stop)
+        assertTrue(CommandRegistry.matchCommand("/goal") is CommandAction.Goal)
+        assertTrue(CommandRegistry.matchCommand("/retry") is CommandAction.Retry)
+    }
 }

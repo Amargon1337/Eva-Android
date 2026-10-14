@@ -1,5 +1,6 @@
 package com.hermex.android.projects
 
+import com.hermex.android.ui.components.EvaHeaderTitle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,11 +14,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
@@ -60,9 +63,11 @@ import com.hermex.android.core.network.dto.ProjectColorPalette
 import com.hermex.android.core.network.dto.ProjectSummary
 import com.hermex.android.navigation.LocalHermexDrawerOpener
 import com.hermex.android.sessions.relativeTimeText
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.ExtendedFloatingActionButton
+import com.hermex.android.ui.theme.EvaDesignTokens
 import com.hermex.android.ui.theme.HermexErrorBanner
 import com.hermex.android.ui.theme.HermexReadableContent
-import com.hermex.android.ui.theme.HermexErrorBanner
 import com.hermex.android.ui.theme.HermexRadii
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -71,6 +76,7 @@ fun ProjectsScreen(
     viewModel: ProjectsViewModel,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    isPaneMode: Boolean = false,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val openDrawer = LocalHermexDrawerOpener.current
@@ -80,7 +86,7 @@ fun ProjectsScreen(
 
     if (showCreateDialog) {
         ProjectFormDialog(
-            title = "New Project",
+            title = "новый проект",
             initialName = "",
             initialColor = ProjectColorPalette.colors[uiState.projects.size % ProjectColorPalette.colors.size],
             onDismiss = { showCreateDialog = false },
@@ -115,50 +121,56 @@ fun ProjectsScreen(
                     deleteCandidate = null
                     project.projectId?.let(viewModel::delete)
                 }) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                    Text("удалить", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { deleteCandidate = null }) { Text("Cancel") }
+                TextButton(onClick = { deleteCandidate = null }) { Text("отмена") }
             },
         )
     }
 
     Scaffold(
         modifier = modifier,
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        "Projects",
-                        fontWeight = FontWeight.Bold,
-                        style = MaterialTheme.typography.titleLarge,
-                    )
+                    EvaHeaderTitle("проекты", "папки для диалогов")
                 },
                 navigationIcon = {
-                    IconButton(onClick = { openDrawer() }) {
-                        Icon(Icons.Filled.Menu, contentDescription = "Open menu")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { viewModel.load() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
-                    }
-                    if (uiState.isMutating) {
-                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    if (isPaneMode) {
+                        IconButton(onClick = { openDrawer() }) {
+                            Icon(Icons.Filled.Menu, contentDescription = "Open menu")
+                        }
                     } else {
-                        FilledIconButton(
-                            onClick = { showCreateDialog = true },
-                            modifier = Modifier.padding(end = 8.dp),
-                        ) {
-                            Icon(Icons.Filled.Add, contentDescription = "New project")
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
                     }
                 },
+                actions = {
+                    if (uiState.isMutating) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp).padding(end = 8.dp), strokeWidth = 2.dp)
+                    }
+                    IconButton(onClick = { viewModel.load() }) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "Refresh")
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
+                    containerColor = Color.Transparent,
                     titleContentColor = MaterialTheme.colorScheme.onSurface,
                 ),
+            )
+        },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = { showCreateDialog = true },
+                shape = RoundedCornerShape(18.dp),
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                text = { Text("новый проект", fontWeight = FontWeight.SemiBold) }
             )
         },
     ) { innerPadding ->
@@ -187,21 +199,55 @@ fun ProjectsScreen(
                     }
                 }
 
-                uiState.projects.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.List,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(32.dp),
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Text("No projects yet", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            "Tap + to create one.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                uiState.projects.isEmpty() -> Box(Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainer,
+                        border = BorderStroke(EvaDesignTokens.Hairline, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(28.dp)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                modifier = Modifier.size(56.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.List,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(28.dp),
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(16.dp))
+                            Text(
+                                "No projects yet",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                "Group sessions, workspace context, and subagents into organized projects.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                            Spacer(Modifier.height(20.dp))
+                            androidx.compose.material3.Button(
+                                onClick = { showCreateDialog = true },
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("создать первый проект")
+                            }
+                        }
                     }
                 }
 
@@ -263,11 +309,11 @@ private fun ProjectRow(
                     }
                     DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                         DropdownMenuItem(
-                            text = { Text("Rename") },
+                            text = { Text("переименовать") },
                             onClick = { menuExpanded = false; onRename() },
                         )
                         DropdownMenuItem(
-                            text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                            text = { Text("удалить", color = MaterialTheme.colorScheme.error) },
                             onClick = { menuExpanded = false; onDelete() },
                         )
                     }
@@ -298,7 +344,7 @@ private fun ProjectFormDialog(
                     value = name,
                     onValueChange = { name = it },
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Project name") },
+                    placeholder = { Text("название проекта") },
                     singleLine = true,
                     shape = RoundedCornerShape(HermexRadii.Cell),
                     colors = OutlinedTextFieldDefaults.colors(

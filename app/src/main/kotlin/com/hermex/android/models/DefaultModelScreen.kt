@@ -1,5 +1,7 @@
 package com.hermex.android.models
 
+import com.hermex.android.ui.components.EvaModeParticles
+import com.hermex.android.ui.components.EvaHeaderTitle
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -60,15 +62,12 @@ fun DefaultModelScreen(
 
     Scaffold(
         modifier = modifier,
+        containerColor = Color.Transparent,
         topBar = {
             TopAppBar(
                 title = {
                     if (!isPaneMode) {
-                        Text(
-                            "Default Model",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleLarge,
-                        )
+                        EvaHeaderTitle("модель по умолчанию", "на чём я думаю")
                     }
                 },
                 navigationIcon = {
@@ -82,7 +81,7 @@ fun DefaultModelScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
+                    containerColor = Color.Transparent,
                     titleContentColor = MaterialTheme.colorScheme.onSurface,
                 ),
             )

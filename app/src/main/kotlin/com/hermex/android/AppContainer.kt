@@ -70,6 +70,11 @@ class AppContainer(val context: Context) {
     private val chatPreferencesStore = DataStoreChatPreferencesStore(context)
     private val appearancePreferencesStore = DataStoreAppearancePreferencesStore(context)
 
+    init {
+        // Audit P0-1: duality mode survives cold starts -- restore + write-through.
+        com.hermex.android.eva.EvaConfig.attachDualityPersistence(appearancePreferencesStore)
+    }
+
     /** Best-effort foreground/background signal. True while at least one activity is started.
      * Updated by [MainActivity.onStart] / [MainActivity.onStop]. Single-activity app, so this
      * faithfully tracks "app is on screen." Read by [HermexResponseCompletionNotifier] to gate
@@ -206,10 +211,6 @@ class AppContainer(val context: Context) {
         initializer { SkillDetailViewModel(skillName, authRepository) }
     }
 
-    fun memoryViewModelFactory() = viewModelFactory {
-        initializer { MemoryViewModel(authRepository) }
-    }
-
     fun tasksViewModelFactory() = viewModelFactory {
         initializer { TasksViewModel(authRepository) }
     }
@@ -224,10 +225,6 @@ class AppContainer(val context: Context) {
 
     fun projectsViewModelFactory() = viewModelFactory {
         initializer { ProjectsViewModel(authRepository) }
-    }
-
-    fun insightsViewModelFactory() = viewModelFactory {
-        initializer { InsightsViewModel(authRepository) }
     }
 
     fun workspaceViewModelFactory(sessionId: String) = viewModelFactory {

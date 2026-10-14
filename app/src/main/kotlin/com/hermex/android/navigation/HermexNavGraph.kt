@@ -89,7 +89,8 @@ import kotlinx.coroutines.launch
 
 val LocalHermexDrawerOpener = compositionLocalOf<() -> Unit> { {} }
 
-private object Routes {
+internal object Routes {
+    const val HOME = "home"
     const val ONBOARDING = "onboarding"
     const val SESSION_LIST = "sessionList"
     const val NEW_CHAT = "newChat"
@@ -124,6 +125,7 @@ private object Routes {
     fun skillDetail(name: String) = "skills/${URLEncoder.encode(name, "UTF-8")}"
 
     const val MEMORY = "memory"
+    fun memoryOf(category: String?): String = if (category.isNullOrBlank()) "memory" else "memory?category=$category"
 
     const val TASKS = "tasks"
     const val TASK_DETAIL_PATTERN = "tasks/{jobId}"
@@ -142,6 +144,15 @@ private object Routes {
     const val DEFAULT_MODEL = "settings/defaultModel"
     const val CUSTOM_HEADERS = "settings/customHeaders"
     const val SERVERS = "settings/servers"
+
+    const val LOOKSMAX = "looksmax"
+    const val TOKENS = "tokens"
+    const val DIARY = "diary"
+    const val TELEMETRY = "telemetry"
+    const val PRESENCE = "presence"
+    const val SYSTEMS = "systems"
+    const val SHELF = "shelf"
+    const val WORKSPACE_MOOD = "workspaceMood"
 }
 
 /**
@@ -160,7 +171,8 @@ fun HermexNavGraph(
     // Reactive width-class signal for the adaptive two-pane shell. Reading LocalConfiguration
     // recomposes this on rotation/resize/multi-window, unlike a value computed once at launch.
     // 600dp matches Material's compact/medium width-class boundary.
-    val isWideLayout = LocalConfiguration.current.screenWidthDp >= 600
+    // We disable the split-pane layout to ensure the Eva Command Center always fills the screen.
+    val isWideLayout = false
 
     val isRestoring by appContainer.authRepository.isRestoring.collectAsStateWithLifecycle()
     val authState by appContainer.authRepository.state.collectAsStateWithLifecycle()
@@ -183,7 +195,7 @@ fun HermexNavGraph(
     }
 
     LaunchedEffect(authState) {
-        val target = if (authState is AuthState.LoggedIn) Routes.SESSION_LIST else Routes.ONBOARDING
+        val target = if (authState is AuthState.LoggedIn) Routes.HOME else Routes.ONBOARDING
         if (navController.currentDestination?.route != target) {
             navController.navigate(target) {
                 popUpTo(navController.graph.id) { inclusive = true }
@@ -196,11 +208,13 @@ fun HermexNavGraph(
         val destination = requestedDestination ?: return@LaunchedEffect
         if (authState !is AuthState.LoggedIn) return@LaunchedEffect
         val route = when (destination) {
-            HermexIntentDestination.Sessions -> Routes.SESSION_LIST
+            HermexIntentDestination.Sessions -> Routes.HOME
             is HermexIntentDestination.Tasks -> Routes.TASKS
             is HermexIntentDestination.Session -> Routes.chat(destination.sessionId)
             is HermexIntentDestination.Task -> Routes.taskDetail(destination.jobId)
             HermexIntentDestination.NewChat -> Routes.NEW_CHAT
+            HermexIntentDestination.Diary -> Routes.DIARY
+            HermexIntentDestination.Looksmax -> Routes.LOOKSMAX
             is HermexIntentDestination.ShareContent -> {
                 val fileUris = destination.uris.map { it.toString() }
                 Routes.share(destination.text ?: "", fileUris = fileUris)
@@ -215,14 +229,14 @@ fun HermexNavGraph(
     // must navigate identically, so there's a single source of truth for them.
     val onOpenSession: (String) -> Unit = { sessionId -> navController.navigate(Routes.chat(sessionId)) }
     val onOpenSkills: () -> Unit = { navController.navigate(Routes.SKILLS) }
-    val onOpenMemory: () -> Unit = { navController.navigate(Routes.MEMORY) }
+    val onOpenMemory: () -> Unit = { navController.navigate(Routes.memoryOf(null)) }
     val onOpenTasks: () -> Unit = { navController.navigate(Routes.TASKS) }
     val onOpenProfiles: () -> Unit = { navController.navigate(Routes.PROFILES) }
     val onOpenProjects: () -> Unit = { navController.navigate(Routes.PROJECTS) }
     val onOpenInsights: () -> Unit = { navController.navigate(Routes.INSIGHTS) }
     val onOpenSettings: () -> Unit = { navController.navigate(Routes.SETTINGS) }
 
-    val startDestination = if (authState is AuthState.LoggedIn) Routes.SESSION_LIST else Routes.ONBOARDING
+    val startDestination = if (authState is AuthState.LoggedIn) Routes.HOME else Routes.ONBOARDING
 
     // Graph construction is hoisted out of NavHost (via the same createGraph() call NavHost uses
     // internally) purely so the identical NavGraph value can be reused by whichever branch below
@@ -235,6 +249,30 @@ fun HermexNavGraph(
             composable(Routes.ONBOARDING) {
                 val viewModel: OnboardingViewModel = viewModel(factory = appContainer.onboardingViewModelFactory())
                 OnboardingScreen(viewModel = viewModel, modifier = Modifier.fillMaxSize())
+            }
+            composable(Routes.HOME) {
+                val viewModel: com.hermex.android.home.EvaHomeViewModel = viewModel()
+                val sessionVm: SessionListViewModel = viewModel(factory = appContainer.sessionListViewModelFactory())
+                com.hermex.android.home.EvaHomeScreen(
+                    viewModel = viewModel,
+                    onOpenChat = {
+                        sessionVm.createSession { newSessionId ->
+                            navController.navigate(Routes.chat(newSessionId))
+                        }
+                    },
+                    onOpenChatWithPrompt = { prompt ->
+                        sessionVm.createSession { newSessionId ->
+                            navController.navigate(Routes.chat(newSessionId, draft = prompt))
+                        }
+                    },
+                    onOpenDiary = { navController.navigate(Routes.DIARY) },
+                    onOpenMemory = { navController.navigate(Routes.memoryOf(null)) },
+                    onOpenLooksmax = { navController.navigate(Routes.LOOKSMAX) },
+                    onOpenTelemetry = { navController.navigate(Routes.TELEMETRY) },
+                    onOpenShelf = { navController.navigate(Routes.SHELF) },
+                    onOpenMore = { navController.navigate(Routes.SESSION_LIST) },
+                    modifier = Modifier.fillMaxSize()
+                )
             }
             composable(Routes.SESSION_LIST) { backStackEntry ->
                 val viewModel: SessionListViewModel = viewModel(factory = appContainer.sessionListViewModelFactory())
@@ -409,10 +447,11 @@ fun HermexNavGraph(
                 )
             }
             composable(Routes.INSIGHTS) {
-                val viewModel: InsightsViewModel = viewModel(factory = appContainer.insightsViewModelFactory())
-                InsightsScreen(
+                val viewModel: com.hermex.android.insights.InsightsViewModel = viewModel()
+                com.hermex.android.insights.InsightsScreen(
                     viewModel = viewModel,
                     onBack = { navController.popBackStack() },
+                    onOpenCategory = { cat -> navController.navigate(Routes.memoryOf(cat)) },
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -475,8 +514,20 @@ fun HermexNavGraph(
                     modifier = Modifier.fillMaxSize(),
                 )
             }
-            composable(Routes.MEMORY) {
-                val viewModel: MemoryViewModel = viewModel(factory = appContainer.memoryViewModelFactory())
+            composable(
+                route = "memory?category={category}",
+                arguments = listOf(
+                    androidx.navigation.navArgument("category") {
+                        defaultValue = ""
+                        nullable = true
+                    },
+                ),
+            ) { backStackEntry ->
+                val viewModel: com.hermex.android.memory.MemoryViewModel = viewModel()
+                val initialCat = backStackEntry.arguments?.getString("category").orEmpty()
+                LaunchedEffect(initialCat) {
+                    viewModel.setCategory(initialCat)
+                }
                 MemoryScreen(
                     viewModel = viewModel,
                     onBack = { navController.popBackStack() },
@@ -575,6 +626,83 @@ fun HermexNavGraph(
                     modifier = Modifier.fillMaxSize(),
                 )
             }
+            composable(Routes.LOOKSMAX) {
+                val viewModel: com.hermex.android.looksmax.LooksmaxViewModel = viewModel()
+                com.hermex.android.looksmax.LooksmaxScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            composable(Routes.TOKENS) {
+                val viewModel: com.hermex.android.tokens.TokensViewModel = viewModel()
+                com.hermex.android.tokens.TokensScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
+                    onOpenSession = { sid -> navController.navigate(Routes.chat(sid)) },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            composable(Routes.DIARY) {
+                val viewModel: com.hermex.android.diary.EvaDiaryViewModel = viewModel()
+                com.hermex.android.diary.EvaDiaryScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            composable(Routes.TELEMETRY) {
+                val viewModel: com.hermex.android.telemetry.PcTelemetryViewModel = viewModel()
+                com.hermex.android.telemetry.PcTelemetryScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            composable(Routes.PRESENCE) {
+                val viewModel: com.hermex.android.systems.PresenceViewModel = viewModel()
+                com.hermex.android.systems.PresenceScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            composable(Routes.SYSTEMS) {
+                com.hermex.android.systems.SystemsMapScreen(
+                    onOpenRoute = { route -> navController.navigate(route) },
+                    onOpenChat = { navController.navigate(Routes.SESSION_LIST) },
+                    onOpenPresence = { navController.navigate(Routes.PRESENCE) },
+                    onOpenShelf = { navController.navigate(Routes.SHELF) },
+                    onOpenHome = { navController.popBackStack(Routes.HOME, inclusive = false) },
+                    onBack = { navController.popBackStack() },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            composable(Routes.SHELF) {
+                val viewModel: com.hermex.android.shelf.ShelfViewModel = viewModel()
+                com.hermex.android.shelf.ShelfScreen(
+                    viewModel = viewModel,
+                    onBack = { navController.popBackStack() },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            composable(Routes.WORKSPACE_MOOD) {
+                com.hermex.android.workspace.HermesWorkspaceMoodScreen(
+                    onNavigateToTab = { tab ->
+                        when (tab) {
+                            com.hermex.android.workspace.WorkspaceTab.TASKS -> navController.navigate(Routes.TASKS)
+                            com.hermex.android.workspace.WorkspaceTab.SKILLS -> navController.navigate(Routes.SKILLS)
+                            com.hermex.android.workspace.WorkspaceTab.MEMORY -> navController.navigate(Routes.memoryOf(null))
+                            com.hermex.android.workspace.WorkspaceTab.PROJECTS -> navController.navigate(Routes.PROJECTS)
+                            com.hermex.android.workspace.WorkspaceTab.PROFILES -> navController.navigate(Routes.PROFILES)
+                            com.hermex.android.workspace.WorkspaceTab.FILES -> navController.navigate(Routes.SESSION_LIST)
+                        }
+                    },
+                    onBack = { navController.popBackStack() },
+                    modifier = Modifier.fillMaxSize(),
+                    isPaneMode = isWideLayout
+                )
+            }
         }
     }
 
@@ -606,10 +734,14 @@ fun HermexNavGraph(
                             when (item) {
                                 SessionListNavItem.TASKS -> navController.navigate(Routes.TASKS) { launchSingleTop = true }
                                 SessionListNavItem.SKILLS -> navController.navigate(Routes.SKILLS) { launchSingleTop = true }
-                                SessionListNavItem.MEMORY -> navController.navigate(Routes.MEMORY) { launchSingleTop = true }
+                                SessionListNavItem.MEMORY -> navController.navigate(Routes.memoryOf(null)) { launchSingleTop = true }
                                 SessionListNavItem.INSIGHTS -> navController.navigate(Routes.INSIGHTS) { launchSingleTop = true }
                                 SessionListNavItem.PROFILES -> navController.navigate(Routes.PROFILES) { launchSingleTop = true }
                                 SessionListNavItem.PROJECTS -> navController.navigate(Routes.PROJECTS) { launchSingleTop = true }
+                                SessionListNavItem.LOOKSMAX -> navController.navigate(Routes.LOOKSMAX) { launchSingleTop = true }
+                                SessionListNavItem.TOKENS -> navController.navigate(Routes.TOKENS) { launchSingleTop = true }
+                                SessionListNavItem.DIARY -> navController.navigate(Routes.DIARY) { launchSingleTop = true }
+                                SessionListNavItem.TELEMETRY -> navController.navigate(Routes.TELEMETRY) { launchSingleTop = true }
                             }
                         },
                         onOpenSession = { sessionId ->
@@ -694,12 +826,16 @@ fun HermexNavGraph(
                             // ViewModelStore) every time; it just also correctly re-evaluates in the general
                             // case where the target entry could change.
                             val sessionListEntry = remember(currentBackStackEntry) {
-                                navController.getBackStackEntry(Routes.SESSION_LIST)
+                                runCatching { navController.getBackStackEntry(Routes.SESSION_LIST) }.getOrNull()
                             }
-                            val leftPaneViewModel: SessionListViewModel = viewModel(
-                                viewModelStoreOwner = sessionListEntry,
-                                factory = appContainer.sessionListViewModelFactory(),
-                            )
+                            val leftPaneViewModel: SessionListViewModel = if (sessionListEntry != null) {
+                                viewModel(
+                                    viewModelStoreOwner = sessionListEntry,
+                                    factory = appContainer.sessionListViewModelFactory(),
+                                )
+                            } else {
+                                viewModel(factory = appContainer.sessionListViewModelFactory())
+                            }
 
                             val currentRoute = currentBackStackEntry?.destination?.route
                             val selectedNavItem = when (currentRoute) {
@@ -740,10 +876,64 @@ fun HermexNavGraph(
                     }
                 }
             } else {
-                NavHost(
-                    navController = navController,
-                    graph = navGraph,
-                )
+                val currentBackStackEntry by navController.currentBackStackEntryAsState()
+                val currentRoute = currentBackStackEntry?.destination?.route
+                val showBottomBar = isLoggedIn &&
+                    currentRoute != Routes.ONBOARDING &&
+                    currentRoute != Routes.CHAT_PATTERN
+
+                var showCompanionSheet by remember { mutableStateOf(false) }
+
+                com.hermex.android.ui.components.EvaAmbientBackdrop {
+                    androidx.compose.material3.Scaffold(
+                        containerColor = Color.Transparent,
+                        bottomBar = {
+                            if (showBottomBar) {
+                                EvaBottomBar(
+                                    currentRoute = currentRoute,
+                                    onNavigateToRoute = { targetRoute ->
+                                        if (targetRoute == Routes.HOME) {
+                                            if (currentRoute != Routes.HOME) {
+                                                navController.popBackStack(Routes.HOME, inclusive = false)
+                                            }
+                                        } else if (targetRoute != currentRoute) {
+                                            navController.navigate(targetRoute) {
+                                                popUpTo(Routes.HOME) { saveState = true }
+                                                launchSingleTop = true
+                                                restoreState = true
+                                            }
+                                        }
+                                    },
+                                    onOpenDrawer = {
+                                        drawerScope.launch { drawerState.open() }
+                                    },
+                                    onOpenCompanion = {
+                                        showCompanionSheet = true
+                                    },
+                                    onCenterAction = {
+                                        navController.navigate(Routes.NEW_CHAT) { launchSingleTop = true }
+                                    },
+                                )
+                            }
+                        }
+                    ) { innerPadding ->
+                        NavHost(
+                            navController = navController,
+                            graph = navGraph,
+                            modifier = Modifier.padding(bottom = if (showBottomBar) innerPadding.calculateBottomPadding() else 0.dp),
+                        )
+                    }
+
+                    if (showCompanionSheet) {
+                        com.hermex.android.companion.EvaCompanionSheet(
+                            onDismiss = { showCompanionSheet = false },
+                            onOpenDiary = { navController.navigate(Routes.DIARY) },
+                            onOpenTelemetry = { navController.navigate(Routes.TELEMETRY) },
+                            onOpenTokens = { navController.navigate(Routes.TOKENS) },
+                            onOpenInsights = { navController.navigate(Routes.INSIGHTS) }
+                        )
+                    }
+                }
             }
         }
     }

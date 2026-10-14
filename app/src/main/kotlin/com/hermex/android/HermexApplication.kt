@@ -22,5 +22,7 @@ class HermexApplication : Application() {
         applicationScope.launch { appContainer.authRepository.restoreSavedServer() }
         applicationScope.launch { appContainer.reconcileAppIcon() }
         applicationScope.launch { appContainer.pruneOfflineCaches() }
+        com.hermex.android.presence.EvaPresenceDispatcher.startHeartbeat(this)
+        com.hermex.android.looksmax.SmokingTracker.init(this)
     }
 }

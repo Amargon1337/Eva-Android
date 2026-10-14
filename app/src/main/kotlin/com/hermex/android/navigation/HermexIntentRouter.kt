@@ -12,6 +12,8 @@ sealed interface HermexIntentDestination {
     data object Sessions : HermexIntentDestination
     data object Tasks : HermexIntentDestination
     data object NewChat : HermexIntentDestination
+    data object Diary : HermexIntentDestination
+    data object Looksmax : HermexIntentDestination
     data class Session(val sessionId: String) : HermexIntentDestination
     data class Task(val jobId: String) : HermexIntentDestination
     data class ShareContent(
@@ -81,6 +83,8 @@ internal fun hermexDeepLinkDestination(uriString: String?): HermexIntentDestinat
         "sessions" -> HermexIntentDestination.Sessions
         "session" -> extractSessionOrFallback(remainder, firstPathSegment)
         "new-chat" -> HermexIntentDestination.NewChat
+        "diary" -> HermexIntentDestination.Diary
+        "looksmax" -> HermexIntentDestination.Looksmax
         "tasks" -> HermexIntentDestination.Tasks
         "task" -> firstPathSegment?.takeIf { it.isNotBlank() }?.let(HermexIntentDestination::Task)
             ?: HermexIntentDestination.Tasks

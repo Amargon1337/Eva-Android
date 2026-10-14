@@ -24,3 +24,13 @@ signing.properties
 *.keystore
 mapping.txt
 app/build/outputs/mapping/
+
+# Local logs and screenshots
+*.log
+app_screen.png
+screen_*.png
+
+# Local build outputs
+.gradle/
+build/
+app/build/
